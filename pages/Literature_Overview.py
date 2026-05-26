@@ -1,0 +1,475 @@
+"""
+Literature Overview — T Cell Exhaustion Receptors
+==================================================
+Methodology, receptor-ligand mapping, and detailed receptor profiles.
+"""
+
+import streamlit as st
+import pandas as pd
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import RECEPTORS, LIGANDS, FAMILY_COLORS, FAMILY_LIST, TCGA_TO_GTEX_TISSUE
+
+st.set_page_config(
+    page_title="Literature Overview — T Cell Exhaustion Receptors",
+    page_icon="📚",
+    layout="wide",
+)
+
+st.markdown("""
+<style>
+.main .block-container { padding-top: 2rem; max-width: 900px; }
+.receptor-card {
+    border-left: 4px solid; padding: 1rem 1.2rem; margin-bottom: 1.5rem;
+    border-radius: 0 8px 8px 0;
+    background: rgba(128,128,128,0.04);
+}
+.ref-item { font-size: 0.85rem; line-height: 1.6; margin-bottom: 0.3rem; }
+.ref-item a { color: #667eea; text-decoration: none; font-weight: 500; }
+.ref-item a:hover { text-decoration: underline; color: #5a6fd6; }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HEADER
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("# 📚 Literature Overview")
+st.markdown("### T Cell Exhaustion, TME Suppression & Methodology")
+
+st.markdown(
+    f"This page documents the methodology behind the Explorer and provides "
+    f"detailed profiles for each of the **{len(RECEPTORS)} receptors** and "
+    f"**{len(LIGANDS)} TME ligands** tracked in this tool."
+)
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# METHODOLOGY (placed first, before receptor profiles)
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("## Methodology")
+
+st.markdown("### What This Tool Measures")
+st.markdown(
+    "This tool answers the question: **for a given cancer type, which T cell "
+    "inhibitory pathways is the tumor microenvironment (TME) most actively "
+    "engaging, and which pathways does it co-activate together?**"
+)
+st.markdown(
+    "It does this by measuring the expression of TME ligands (the molecules "
+    "tumor/stromal/myeloid cells produce to shut down T cells) and comparing "
+    "them to healthy tissue. Everything is expressed as **% above normal** — "
+    "how much more of each suppressive ligand the tumor produces compared to "
+    "the same organ in a healthy person."
+)
+
+st.markdown("### Data Sources")
+st.markdown(
+    "**Tumor data:** The Cancer Genome Atlas (TCGA) via the NCI Genomic Data "
+    "Commons (GDC) API. STAR-Counts gene expression quantification files "
+    "provide Transcripts Per Million (TPM) values from the STAR aligner "
+    "against GRCh38/hg38 with GENCODE v36 annotations."
+)
+st.markdown(
+    "**Normal tissue baseline:** The Genotype-Tissue Expression (GTEx) project "
+    "provides RNA-seq expression from **54 non-diseased tissue sites** across "
+    "~1000 healthy individuals. For each TCGA cancer type, we query the GTEx "
+    "API for the median TPM of each gene in the corresponding normal tissue. "
+    "The tissue mappings are:"
+)
+
+# Show TCGA → GTEx mapping table
+mapping_rows = []
+for proj, name in sorted(TCGA_TO_GTEX_TISSUE.items()):
+    from config import TCGA_PROJECTS
+    mapping_rows.append({
+        "TCGA Project": proj,
+        "Cancer Type": TCGA_PROJECTS.get(proj, ""),
+        "GTEx Normal Tissue": name.replace("_", " "),
+    })
+mapping_df = pd.DataFrame(mapping_rows)
+st.dataframe(mapping_df, use_container_width=True, hide_index=True, height=300)
+
+st.markdown("### Why Transcript Levels Are a Reasonable Approximation")
+st.markdown(
+    "This tool uses mRNA transcript abundance (TPM) as a proxy for protein-level "
+    "activity. This is an approximation, not a direct measurement."
+)
+st.markdown(
+    "**Transcription correlates with protein for most immune checkpoints.** "
+    "Multiple studies have validated that for PD-L1, PD-L2, CTLA-4 ligands, "
+    "galectin-9, CD155, and others, mRNA expression correlates with protein "
+    "expression measured by IHC or flow cytometry at the bulk tissue level. "
+    "The TCGA Pan-Cancer Immune Landscape study (Thorsson et al., 2018, "
+    "*Immunity*) demonstrated that RNA-based immune signatures are prognostically "
+    "informative and concordant with protein-level immune phenotyping."
+)
+st.markdown(
+    "**TCGA provides the largest uniformly processed cohort available.** "
+    "With 11,000+ tumors across 33 cancer types, all processed through the same "
+    "STAR pipeline, TCGA offers unmatched statistical power. No proteomic dataset "
+    "comes close for immune checkpoint molecules."
+)
+st.markdown(
+    "**Immune checkpoint therapies were developed using transcriptomic biomarkers.** "
+    "TMB, IFN-γ signatures, and T cell-inflamed gene expression profiles used in "
+    "clinical trials (KEYNOTE, CheckMate) are all RNA-based. The FDA-approved "
+    "companion diagnostics for pembrolizumab include gene expression scores."
+)
+st.markdown("**Known limitations:**")
+st.markdown(
+    "Post-transcriptional regulation can decouple mRNA from protein. PD-L1's protein "
+    "half-life is regulated by ubiquitination (CMTM6/CMTM4), glycosylation affects "
+    "antibody detection, and exosomal PD-L1 acts at a distance. CTLA-4 is constitutively "
+    "internalized and recycled. Bulk RNA-seq cannot distinguish which cell type expresses "
+    "a gene — PD-L1 mRNA could come from tumor cells, macrophages, or DCs."
+)
+
+st.markdown("### Normalization Pipeline")
+st.markdown(
+    "**Within-sample (TPM):** Corrects for gene length and sequencing depth within "
+    "each sample. Makes genes comparable within a single patient."
+)
+st.markdown(
+    "**Between-sample (Upper Quartile):** Corrects for technical variation between "
+    "samples. Each sample is scaled so its 75th percentile expression equals the "
+    "median 75th percentile across all samples. Same approach as GDC's FPKM-UQ."
+)
+st.markdown(
+    "**Log₂(x + 1) transform:** Compresses dynamic range for correlation analysis."
+)
+
+st.markdown("### log₂ Fold-Change — The Core Metric")
+st.markdown(
+    "All charts and node sizes use **log₂ fold-change over normal tissue** "
+    "(log₂FC) as the primary unit. This is the standard metric in differential "
+    "expression analysis (DESeq2, limma, edgeR all report log₂FC). The formula is:"
+)
+st.markdown(
+    "    *log₂FC = log₂( (mean_tumor_TPM + 0.1) / GTEx_normal_median_TPM )*"
+)
+st.markdown(
+    "The +0.1 pseudocount prevents log(0) for unexpressed genes. Only positive "
+    "values are shown (upregulation in tumor vs normal). Key interpretation:"
+)
+st.markdown(
+    "| log₂FC | Fold-change | Meaning |\n"
+    "|--------|-------------|----------|\n"
+    "| 0 | 1× | Same as normal tissue |\n"
+    "| 1 | 2× | Doubled in tumor |\n"
+    "| 2 | 4× | Quadrupled |\n"
+    "| 3 | 8× | 8-fold higher |\n"
+    "| 5 | 32× | Strongly upregulated |\n"
+    "| 10 | 1024× | Massively upregulated |"
+)
+st.markdown(
+    "**Why log₂FC, not raw percentage?** Raw percentage above normal produces "
+    "misleading visuals when comparing genes with very different baseline expression. "
+    "A ligand going from 0.5 TPM (normal skin) to 500 TPM (melanoma) is a 100,000% "
+    "increase that visually crushes everything else. On the log₂ scale, that's ~10 — "
+    "a large but readable value alongside a ligand at log₂FC = 3 (8× increase). "
+    "The log scale correctly compresses the dynamic range so that constitutive "
+    "structural genes (collagen, HLA-E) and immune-specific genes (PD-L1, galectin-9) "
+    "are visually comparable."
+)
+st.markdown(
+    "**For ligands with near-zero normal expression** (GTEx baseline < 0.1 TPM), "
+    "the baseline is floored at 0.1 to avoid division by zero. This means a tumor "
+    "expressing 10 TPM of a normally-silent gene shows as log₂(10/0.1) ≈ 6.6."
+)
+st.markdown(
+    "**If GTEx is unavailable** (no internet on first load), the tool falls back to "
+    "the within-cohort median as baseline. This is less ideal — it only shows which "
+    "patients are above or below the tumor cohort midpoint."
+)
+
+st.markdown("### Ligand Activation Score & Co-activation Network")
+st.markdown(
+    "For each inhibitory receptor, we compute a per-patient **Ligand Activation Score**:"
+)
+st.markdown(
+    "**Step 1 — Identify ligands.** Each receptor has known TME binding partners "
+    "(see Receptor–Ligand Mapping table below)."
+)
+st.markdown(
+    "**Step 2 — Sum in linear space.** For each patient, back-transform ligand "
+    "expression from log₂ to linear TPM, then sum all ligands for a receptor. "
+    "This gives the total ligand burden available to engage that receptor. "
+    "Summing must be in linear space (not log) because adding log values would "
+    "multiply rather than add the underlying quantities."
+)
+st.markdown(
+    "**Step 3 — Correlate across patients.** For each pair of receptors, Spearman "
+    "rank correlation is computed between their ligand activation scores. A high "
+    "positive ρ means: tumors that upregulate one pathway also upregulate the other."
+)
+st.markdown(
+    "**Only positive correlations** are shown (co-activation). Receptor pairs with "
+    "identical ligand sets are drawn as dotted lines (trivial ρ=1). Pairs sharing "
+    "some but not all ligands that also correlate are drawn as dashed blue lines."
+)
+
+st.markdown("### Clinical Interpretation")
+st.markdown(
+    "A thick edge between PD-1 and TIGIT means the TME co-activates both pathways — "
+    "supporting combination immunotherapy (anti-PD-1 + anti-TIGIT). A large isolated "
+    "node means that pathway is heavily activated but independent of others — "
+    "monotherapy may suffice. Stage filtering reveals how the suppressive network "
+    "evolves with disease progression."
+)
+
+st.markdown("### Methodology References")
+method_refs = [
+    ("Thorsson V et al. (2018). \"The Immune Landscape of Cancer.\" <i>Immunity</i> 48(4):812-830.", "29628290"),
+    ("Ayers M et al. (2017). \"IFN-γ-related mRNA profile predicts clinical response to PD-1 blockade.\" <i>J Clin Invest</i> 127(8):2930-2940.", "28650338"),
+    ("GTEx Consortium (2020). \"The GTEx Consortium atlas of genetic regulatory effects across human tissues.\" <i>Science</i> 369(6509):1318-1330.", "32913098"),
+    ("Bullard JH et al. (2010). \"Evaluation of statistical methods for normalization and differential expression in mRNA-Seq experiments.\" <i>BMC Bioinformatics</i> 11:94.", "20167110"),
+    ("Robinson MD & Oshlack A (2010). \"A scaling normalization method for differential expression analysis of RNA-seq data.\" <i>Genome Biol</i> 11:R25.", "20196867"),
+]
+for i, (text, pmid) in enumerate(method_refs, 1):
+    st.markdown(
+        f'<div class="ref-item">{i}. {text} '
+        f'<a href="https://pubmed.ncbi.nlm.nih.gov/{pmid}" target="_blank">PubMed: {pmid}</a></div>',
+        unsafe_allow_html=True,
+    )
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RECEPTOR–LIGAND MAPPING TABLE
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("## Receptor–Ligand Mapping")
+st.markdown(
+    "Each T cell inhibitory receptor is engaged by one or more ligands expressed "
+    "in the tumor microenvironment. This table shows every receptor–ligand pair "
+    "tracked in the Explorer."
+)
+
+st.markdown("#### ⚠ Non-classical interactions")
+st.markdown(
+    "Most pairs in this tool follow the classical model: a receptor on the T cell "
+    "binds a ligand secreted or surface-expressed by tumor/stromal/myeloid cells in "
+    "the TME. However, a few entries are non-classical and should be interpreted "
+    "with that context:"
+)
+st.markdown(
+    "**HVEM (TNFRSF14) → BTLA / CD160:** HVEM is a bidirectional signaling molecule. "
+    "It is expressed on T cells themselves as well as on tumor cells and APCs. When "
+    "HVEM on a tumor cell engages BTLA or CD160 on a T cell, it delivers an inhibitory "
+    "signal — this is the interaction we measure. However, HVEM on the T cell can also "
+    "deliver co-stimulatory signals in the opposite direction (via LIGHT/LTα), so its "
+    "role is context-dependent. Bulk RNA-seq cannot distinguish which cell type expresses "
+    "HVEM in a given sample."
+)
+st.markdown(
+    "**CD39 (ENTPD1) / CD73 (NT5E) / A2A receptor (ADORA2A) — the adenosine pathway:** "
+    "This is not a classical receptor-ligand pair. CD39 is an ectoenzyme on T cells and "
+    "Tregs that converts extracellular ATP → AMP. CD73 (on tumor and stromal cells) then "
+    "converts AMP → adenosine. Adenosine binds the A2A receptor (on T cells) to suppress "
+    "their function. We track CD73 and A2A as \"ligands\" for CD39 because their co-expression "
+    "indicates an active adenosine-mediated suppressive pathway, but the biology is a "
+    "three-step metabolic cascade rather than a direct receptor-ligand binding event."
+)
+
+rl_rows = []
+for receptor_gene, rinfo in RECEPTORS.items():
+    # Find ligands for this receptor
+    receptor_ligands = [
+        (lg, linfo) for lg, linfo in LIGANDS.items()
+        if receptor_gene in linfo.get("receptors", [])
+    ]
+    if receptor_ligands:
+        for lg, linfo in receptor_ligands:
+            rl_rows.append({
+                "Receptor": rinfo["label"],
+                "Receptor Gene": receptor_gene,
+                "Receptor Ensembl": rinfo["ensembl"],
+                "Ligand": linfo["label"],
+                "Ligand Gene": lg,
+                "Ligand Ensembl": linfo["ensembl"],
+                "Family": rinfo["family"],
+            })
+    else:
+        rl_rows.append({
+            "Receptor": rinfo["label"],
+            "Receptor Gene": receptor_gene,
+            "Receptor Ensembl": rinfo["ensembl"],
+            "Ligand": "—",
+            "Ligand Gene": "—",
+            "Ligand Ensembl": "—",
+            "Family": rinfo["family"],
+        })
+
+# Also add general TME suppressive molecules not tied to a specific receptor
+for lg, linfo in LIGANDS.items():
+    if not linfo["receptors"]:
+        rl_rows.append({
+            "Receptor": "TME (general)",
+            "Receptor Gene": "—",
+            "Receptor Ensembl": "—",
+            "Ligand": linfo["label"],
+            "Ligand Gene": lg,
+            "Ligand Ensembl": linfo["ensembl"],
+            "Family": "General TME Suppression",
+        })
+
+rl_df = pd.DataFrame(rl_rows)
+st.dataframe(rl_df, use_container_width=True, height=500, hide_index=True)
+
+st.caption(
+    f"{len(RECEPTORS)} receptors × {len(LIGANDS)} ligands tracked. "
+    "Receptors are on the T cell surface. Ligands are expressed by "
+    "tumor cells, stromal cells, or myeloid cells in the TME."
+)
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BACKGROUND ON T CELL EXHAUSTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("## What is T Cell Exhaustion?")
+st.markdown(
+    "T cell exhaustion is a state of progressive dysfunction that develops when T cells "
+    "are exposed to persistent antigen stimulation — as occurs in chronic viral infections "
+    "and in the tumor microenvironment. Exhausted T cells lose their ability to kill target "
+    "cells and produce effector cytokines (IFN-γ, TNF-α, IL-2) in a hierarchical manner: "
+    "IL-2 production is lost first, followed by TNF-α, and finally IFN-γ and cytotoxic "
+    "capacity."
+)
+st.markdown(
+    "The hallmark of exhaustion is the sustained, high-level co-expression of multiple "
+    "inhibitory receptors on the T cell surface. No single receptor defines exhaustion — "
+    "rather, it's the combinatorial co-expression pattern (e.g., PD-1⁺ TIM-3⁺ LAG-3⁺ TIGIT⁺) "
+    "that marks the dysfunctional state. This is why co-activation network analysis is "
+    "informative: it reveals which suppressive pathways the TME engages simultaneously."
+)
+st.markdown(
+    "Anti-PD-1 therapy works primarily by reinvigorating the \"progenitor exhausted\" (Tpex) "
+    "subset rather than fully reversing terminal exhaustion. Understanding which additional "
+    "pathways the TME co-activates alongside PD-1 is critical for designing effective "
+    "combination immunotherapy."
+)
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# RECEPTOR OVERVIEW TABLE
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("## Receptor Reference")
+
+families = {}
+for gene, info in RECEPTORS.items():
+    families.setdefault(info["family"], []).append((gene, info))
+
+overview_rows = []
+for gene, info in RECEPTORS.items():
+    overview_rows.append({
+        "Gene Symbol": gene,
+        "Common Name": info["label"],
+        "Ensembl ID": info["ensembl"],
+        "Chromosome": info.get("chromosome", "—"),
+        "Family": info["family"],
+    })
+
+overview_df = pd.DataFrame(overview_rows)
+st.dataframe(overview_df, use_container_width=True, height=400, hide_index=True)
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DETAILED RECEPTOR PROFILES
+# ═══════════════════════════════════════════════════════════════════════════
+
+st.markdown("## Detailed Receptor Profiles")
+
+for fam_name in FAMILY_LIST:
+    if fam_name not in families:
+        continue
+
+    color = FAMILY_COLORS.get(fam_name, "#888888")
+    st.markdown(f"### {fam_name}")
+
+    for gene, info in families[fam_name]:
+        ensembl_url = f"https://www.ensembl.org/Homo_sapiens/Gene/Summary?g={info['ensembl']}"
+
+        st.markdown(
+            f'<div class="receptor-card" style="border-left-color: {color};">',
+            unsafe_allow_html=True,
+        )
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"#### {info['label']}  (`{gene}`)")
+        with col2:
+            st.markdown(f"[Ensembl ↗]({ensembl_url})")
+
+        # Gene info
+        st.markdown(
+            f"**Ensembl:** `{info['ensembl']}` · "
+            f"**Chromosome:** {info.get('chromosome', '—')} · "
+            f"**Family:** {info['family']}"
+        )
+
+        # Ligands for this receptor
+        receptor_ligs = [
+            LIGANDS[lg]["label"] for lg in LIGANDS
+            if gene in LIGANDS[lg].get("receptors", [])
+        ]
+        if receptor_ligs:
+            st.markdown(f"**TME Ligands:** {', '.join(receptor_ligs)}")
+
+        # Mechanism
+        st.markdown("**How it shuts down the T cell:**")
+        st.markdown(info.get("mechanism", "_No mechanism description available._"))
+
+        # References
+        refs = info.get("references", [])
+        if refs:
+            st.markdown("**Key references:**")
+            for i, ref in enumerate(refs, 1):
+                pmid = None
+                if "PMID:" in ref:
+                    pmid_part = ref.split("PMID:")[-1].strip()
+                    pmid = "".join(c for c in pmid_part if c.isdigit())
+
+                if pmid:
+                    cite_text = ref.split("PMID:")[0].strip().rstrip(".")
+                    st.markdown(
+                        f'<div class="ref-item">{i}. {cite_text}. '
+                        f'<a href="https://pubmed.ncbi.nlm.nih.gov/{pmid}" target="_blank">'
+                        f'PubMed: {pmid}</a></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(f'<div class="ref-item">{i}. {ref}</div>', unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("")
+
+    st.markdown("---")
+
+st.markdown(
+    "**Population differences:** Variability across racial/ethnic groups may reflect "
+    "differences in tumor immunogenicity, germline immune gene polymorphisms, or HLA "
+    "diversity. These are exploratory observations from TCGA bulk RNA-seq and should be "
+    "validated with single-cell data and controlled cohort studies."
+)
+
+st.markdown("---")
+st.caption(
+    f"Literature Overview · {len(RECEPTORS)} receptors · {len(LIGANDS)} ligands · "
+    "References link to PubMed"
+)

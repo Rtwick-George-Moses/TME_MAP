@@ -206,20 +206,62 @@ st.markdown(
 )
 st.markdown(
     "**Step 3 — Correlate across patients.** For each pair of receptors, Spearman "
-    "rank correlation is computed between their ligand activation scores. A high "
-    "positive ρ means: tumors that upregulate one pathway also upregulate the other."
+    "rank correlation is computed between their ligand activation scores. Both "
+    "positive and negative correlations are shown if they pass the |ρ| threshold."
+)
+
+st.markdown("### Network Edge Types")
+st.markdown(
+    "| Edge Style | Color | Meaning |\n"
+    "|---|---|---|\n"
+    "| **Solid** | Blue | Positive co-activation (+ρ): TME upregulates both pathways together |\n"
+    "| **Solid** | Red | Inverse correlation (−ρ): when one pathway is active, the other tends to be low |\n"
+    "| **Dashed** | Blue/Red | Same as above, but the pair also shares at least one ligand |\n"
+    "| **Dotted** | Black | Identical ligand set (e.g., BTLA & CD160 both bind only HVEM) — ρ=1 trivially |\n"
+    "| **Dashed** | Orange | Shared ligand but no significant |ρ| at current threshold |"
 )
 st.markdown(
-    "**Only positive correlations** are shown (co-activation). Receptor pairs with "
-    "identical ligand sets are drawn as dotted lines (trivial ρ=1). Pairs sharing "
-    "some but not all ligands that also correlate are drawn as dashed blue lines."
+    "Edge thickness is proportional to |ρ|. Node size reflects total log₂ fold-change "
+    "of that receptor's ligands compared to normal tissue — larger nodes receive more "
+    "suppressive pressure from the TME."
+)
+st.markdown(
+    "**Positive edges (blue)** reveal co-suppressive strategies: the TME engages both "
+    "pathways simultaneously, suggesting combination therapy may be needed. "
+    "**Negative edges (red)** reveal mutually exclusive strategies: the TME tends to use "
+    "one OR the other, suggesting either monotherapy might be sufficient for different "
+    "patient subgroups."
+)
+
+st.markdown("### Ligand Activation Distribution (Ridgeline Chart)")
+st.markdown(
+    "The Receptor Expression tab shows a **ridgeline density plot** (horizontal violin) "
+    "for each receptor. The x-axis is the per-patient **log₂ fold-change of total "
+    "ligand activation** compared to GTEx normal tissue. For each patient, we sum all "
+    "ligands for a receptor in linear TPM, then compute log₂(patient_sum / normal_sum). "
+    "This shows the full distribution across the cohort — not just a mean and error bar."
+)
+st.markdown(
+    "**Why density instead of a bar chart?** A bar chart with error bars assumes the "
+    "distribution is roughly symmetric around the mean. In reality, ligand activation "
+    "is often bimodal: some tumors are \"cold\" (low ligand expression, near normal) "
+    "while others are \"hot\" (high expression, strong suppression). A violin plot "
+    "reveals this structure — a bimodal distribution suggests two biological subtypes "
+    "that would respond differently to checkpoint blockade."
+)
+st.markdown(
+    "Receptors are sorted top-to-bottom by median log₂FC (most activated at top). "
+    "The dashed gray line at 0 marks the normal tissue level. The white mean line "
+    "inside each violin shows the cohort average."
 )
 
 st.markdown("### Clinical Interpretation")
 st.markdown(
-    "A thick edge between PD-1 and TIGIT means the TME co-activates both pathways — "
-    "supporting combination immunotherapy (anti-PD-1 + anti-TIGIT). A large isolated "
-    "node means that pathway is heavily activated but independent of others — "
+    "A thick blue edge between PD-1 and TIGIT means the TME co-activates both pathways — "
+    "supporting combination immunotherapy (anti-PD-1 + anti-TIGIT). A thick red edge "
+    "between two receptors means they are inversely activated — the TME tends to use "
+    "one or the other, which may define distinct patient subgroups. A large isolated "
+    "node means that pathway is heavily activated but independent — "
     "monotherapy may suffice. Stage filtering reveals how the suppressive network "
     "evolves with disease progression."
 )

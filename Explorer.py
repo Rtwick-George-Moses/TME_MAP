@@ -953,25 +953,39 @@ def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
         sub = rdf[rdf["Receptor"] == receptor_name]
         ligands_in_receptor = sub["Ligand"].unique()
 
-        # ── Histogram bars (behind KDE) — pooled per-ligand values, same x-range as KDE ──
-        all_vals = sub["log₂FC"].dropna().values
-        n_ligands = len(ligands_in_receptor)
-        if len(all_vals) > 0:
-            counts, bin_edges = np.histogram(all_vals, bins=30)
-            # Divide by number of ligands to approximate per-patient count
-            patient_approx = np.round(counts / max(n_ligands, 1)).astype(int)
-            counts_norm = counts / counts.max() * 0.6 if counts.max() > 0 else counts
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            bin_width = bin_edges[1] - bin_edges[0]
+        # ── Histogram bars — per-patient total ligand activation (one value per patient) ──
+        # Look up gene symbol for this receptor label
+        receptor_gene = next((g for g, info in RECEPTORS.items() if info["label"] == receptor_name), None)
+        if receptor_gene:
+            lig_genes_for_hist = [(lg, linfo) for lg, linfo in LIGANDS.items()
+                                  if receptor_gene in linfo.get("receptors", []) and ligand_df is not None and lg in ligand_df.columns]
+        else:
+            lig_genes_for_hist = []
+        if lig_genes_for_hist and ligand_df is not None:
+            tumor_sum = pd.Series(0.0, index=ligand_df.index)
+            normal_sum = 0.0
+            for lg, _ in lig_genes_for_hist:
+                tumor_sum += np.power(2, ligand_df[lg]) - 1
+                normal_sum += max(baseline.get(lg, 0), 0.1)
+            patient_fc = np.log2((tumor_sum + 0.1) / max(normal_sum, 0.1))
+            patient_fc = patient_fc.loc[patient_fc.index.isin(df.index)].dropna().values
 
-            fig.add_trace(go.Bar(
-                x=bin_centers, y=counts_norm,
-                width=bin_width * 0.9,
-                marker=dict(color="rgba(180,180,180,0.3)", line=dict(width=0)),
-                showlegend=False,
-                customdata=patient_approx,
-                hovertemplate=f"<b>{receptor_name}</b><br>log₂FC: %{{x:.2f}}<br>~%{{customdata}} patients<extra></extra>",
-            ), row=row_idx, col=1)
+            if len(patient_fc) > 0:
+                counts, bin_edges = np.histogram(patient_fc, bins=25)
+                counts_norm = counts / counts.max() * 0.6 if counts.max() > 0 else counts
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                bin_width = bin_edges[1] - bin_edges[0]
+
+                fig.add_trace(go.Bar(
+                    x=bin_centers, y=counts_norm,
+                    width=bin_width * 0.9,
+                    marker=dict(color="rgba(180,180,180,0.35)", line=dict(width=0.5, color="rgba(150,150,150,0.3)")),
+                    showlegend=(ri == 0),
+                    name="Patient distribution",
+                    legendgroup="hist",
+                    customdata=counts,
+                    hovertemplate=f"<b>{receptor_name}</b> (combined)<br>log₂FC: %{{x:.2f}}<br>Patients: %{{customdata}}<extra></extra>",
+                ), row=row_idx, col=1)
 
         # ── KDE curves per ligand (on top) ──
         for lig_name in ligands_in_receptor:
@@ -1379,7 +1393,7 @@ else:
 st.markdown(f"##### {TCGA_PROJECTS[project_id]} · {population}")
 
 # Stage + threshold in one row
-col_stage, col_thresh = st.columns([4, 1], gap="small")
+col_stage, col_thresh = st.columns([1, 1], gap="small")
 with col_stage:
     selected_stage = st.segmented_control(
         "Cancer Stage (AJCC Pathologic)",

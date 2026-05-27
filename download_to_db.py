@@ -264,6 +264,8 @@ def main():
     parser.add_argument("--max-samples", type=int, default=0, help="Max samples per project (0 = all, default: all)")
     parser.add_argument("--projects", nargs="*", default=None,
                         help="Specific projects to download (default: all)")
+    parser.add_argument("--force", action="store_true",
+                        help="Re-download projects even if they already exist in the DB")
     args = parser.parse_args()
 
     projects = args.projects or list(TCGA_PROJECTS.keys())
@@ -279,16 +281,36 @@ def main():
     print(f"Projects: {len(projects)}")
     print(f"Max samples per project: {'all' if args.max_samples <= 0 else args.max_samples}")
     print(f"Genes tracked: {len(ALL_GENE_ENSEMBL)} ({len(RECEPTORS)} receptors + {len(LIGANDS)} ligands)")
+    print(f"Force re-download: {args.force}")
     print(f"═══════════════════════════════════════════════════════\n")
 
     conn = init_db(args.db)
 
+    # Check which projects already exist in DB
+    existing_projects = set()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT project_id FROM expression")
+        existing_projects = {row[0] for row in cursor.fetchall()}
+        if existing_projects:
+            print(f"Already in DB: {', '.join(sorted(existing_projects))}\n")
+    except Exception:
+        pass
+
     success = 0
+    skipped = 0
     failed = []
 
     for pi, project_id in enumerate(projects):
         print(f"\n[{pi+1}/{len(projects)}] {project_id} — {TCGA_PROJECTS[project_id]}")
         print(f"{'─' * 50}")
+
+        # Skip if already downloaded (unless --force)
+        if project_id in existing_projects and not args.force:
+            print(f"  ✓ Already in DB. Skipping (use --force to re-download).")
+            skipped += 1
+            success += 1
+            continue
 
         try:
             # Demographics
@@ -339,9 +361,8 @@ def main():
     conn.commit()
     conn.close()
 
-    # Summary
     print(f"\n{'═' * 50}")
-    print(f"DONE: {success}/{len(projects)} projects downloaded")
+    print(f"DONE: {success}/{len(projects)} projects available ({skipped} skipped, {success - skipped} new)")
     if failed:
         print(f"FAILED ({len(failed)}):")
         for p, reason in failed:

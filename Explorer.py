@@ -1283,10 +1283,6 @@ def create_receptor_activation_chart(ligand_df, project_id, gtex_baseline=None, 
 with st.sidebar:
     st.markdown("#### Filters")
     population = st.selectbox("Population (Race)", POPULATION_GROUPS, index=0)
-
-    st.markdown("---")
-    st.markdown("#### Network Parameters")
-    p_threshold = st.select_slider("p-value", [0.001, 0.005, 0.01, 0.05], value=0.05)
     st.markdown("---")
     db_status = f"**Local DB found** (`tcga_data.db`)" if DB_AVAILABLE else "No local DB — using GDC API"
     st.caption(
@@ -1294,6 +1290,9 @@ with st.sidebar:
         f"{len(RECEPTORS)} receptors · {len(LIGANDS)} ligands. "
         "TPM from STAR-Counts, UQ-normalized, log₂(x+1)."
     )
+
+# Hardcoded p-value threshold
+p_threshold = 0.05
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1377,6 +1376,39 @@ except Exception as e:
 with st.spinner("Fetching GTEx normal tissue baselines (first time only)..."):
     gtex_baseline, gtex_tissue = fetch_gtex_baseline(project_id)
 
+# ── Hematologic / poor-baseline warnings ─────────────────────────────────────
+HEMATOLOGIC_PROJECTS = {"TCGA-LAML", "TCGA-DLBC"}
+APPROXIMATE_BASELINE_PROJECTS = {
+    "TCGA-THYM": "No thymus tissue in GTEx. Using Blood Vessel as a rough proxy — results are approximate.",
+    "TCGA-UVM": "No eye/uveal tissue in GTEx. Using Skin (melanocyte lineage) — results reflect lineage not organ.",
+    "TCGA-MESO": "No pleural tissue in GTEx. Using Lung — mesothelioma originates in the lung lining.",
+    "TCGA-SARC": "No soft tissue in GTEx. Using Adipose Subcutaneous — sarcomas are mesenchymal, not adipose.",
+}
+
+if project_id in HEMATOLOGIC_PROJECTS:
+    if project_id == "TCGA-DLBC":
+        st.warning(
+            f"⚠ **Diffuse Large B-Cell Lymphoma** presents as solid tumor masses in lymph nodes, "
+            f"but the malignant cells are B cells (hematologic origin). TCGA collected tissue biopsies "
+            f"from lymph node masses — so the data includes stroma, vasculature, and infiltrating T cells, "
+            f"meaning the TME framework partially applies."
+        )
+    else:  # LAML
+        st.warning(
+            f"⚠ **Acute Myeloid Leukemia** is a blood cancer in the bone marrow with no solid tumor "
+            f"microenvironment. The GTEx baseline (Whole Blood) lacks the marrow niche where AML resides, "
+            f"and many checkpoint molecules are constitutively expressed by normal myeloid cells — so "
+            f"log₂FC values will appear inflated. However, some overexpressed signals are clinically "
+            f"relevant: Zhao et al. (2025, *Signal Transduction and Targeted Therapy*) showed that AML "
+            f"cells drive NK cell exhaustion through overactivation of the NKG2A/HLA-E axis, suppressing "
+            f"the PI3K-AKT pathway — and that blocking NKG2A reversed this exhaustion both in vitro and "
+            f"in vivo. [DOI: 10.1038/s41392-025-02228-5](https://www.nature.com/articles/s41392-025-02228-5)"
+        )
+elif project_id in APPROXIMATE_BASELINE_PROJECTS:
+    st.info(
+        f"ℹ **Approximate GTEx baseline:** {APPROXIMATE_BASELINE_PROJECTS[project_id]}"
+    )
+
 # ── Stage segmented control (placed prominently at top of page) ──────────────
 # Build stage options from the data
 STAGE_ORDER = ["All Stages", "Stage I", "Stage II", "Stage III", "Stage IV", "Not Reported"]
@@ -1404,8 +1436,8 @@ with col_stage:
     if selected_stage is None:
         selected_stage = "All Stages"
 with col_thresh:
-    corr_threshold = st.slider("Min |ρ| correlation threshold", 0.1, 0.8, 0.50, 0.05,
-        help="Minimum absolute Spearman ρ between ligand activation scores to draw an edge.")
+    corr_threshold = st.slider("Min |ρ| correlation threshold", 0.1, 0.8, 0.60, 0.05,
+        help="Minimum absolute Spearman ρ between ligand activation scores to draw an edge. Edges also require p < 0.05.")
 
 bl_status = f"GTEx baseline ({gtex_tissue}) ✓" if not gtex_baseline.empty else "cohort baseline"
 if data_source == "LOCAL DB":
@@ -1597,7 +1629,11 @@ with tab3:
             "- **Dark red** = strong negative correlation (inverse activation).\n"
             "- **White/near-zero** = no relationship.\n\n"
             "This is the same data underlying the network edges, but shown for all pairs "
-            "including those below the |ρ| threshold."
+            "including those below the |ρ| threshold. Network edges require both |ρ| ≥ threshold "
+            "AND p-value < 0.05 (hardcoded). For cohorts of 200+ patients, any |ρ| ≥ 0.3 "
+            "will easily pass p < 0.05 — the |ρ| threshold is the meaningful filter. "
+            "Even at n=25 patients (our minimum filter threshold before falling back to all samples), "
+            "a Spearman ρ of ~0.40 reaches p < 0.05 — still below our default |ρ| ≥ 0.60 threshold."
         )
 
 with tab4:

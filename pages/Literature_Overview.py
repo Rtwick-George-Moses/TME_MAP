@@ -10,7 +10,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import RECEPTORS, LIGANDS, FAMILY_COLORS, FAMILY_LIST, TCGA_TO_GTEX_TISSUE
+from config import RECEPTORS, LIGANDS, FAMILY_COLORS, FAMILY_LIST, TCGA_TO_GTEX_TISSUE, TCGA_PROJECTS
 
 st.set_page_config(
     page_title="Literature Overview — T Cell Exhaustion Receptors",
@@ -43,7 +43,7 @@ st.markdown("### T Cell Exhaustion, TME Suppression & Methodology")
 st.markdown(
     f"This page documents the methodology behind the Explorer and provides "
     f"detailed profiles for each of the **{len(RECEPTORS)} receptors** and "
-    f"**{len(LIGANDS)} TME ligands** tracked in this tool."
+    f"**{len(LIGANDS)} TME ligands** tracked across **{len(TCGA_PROJECTS)} TCGA cancer types**."
 )
 
 st.markdown("---")
@@ -71,10 +71,11 @@ st.markdown(
 
 st.markdown("### Data Sources")
 st.markdown(
-    "**Tumor data:** The Cancer Genome Atlas (TCGA) via the NCI Genomic Data "
-    "Commons (GDC) API. STAR-Counts gene expression quantification files "
-    "provide Transcripts Per Million (TPM) values from the STAR aligner "
-    "against GRCh38/hg38 with GENCODE v36 annotations."
+    f"**Tumor data:** The Cancer Genome Atlas (TCGA) via the NCI Genomic Data "
+    f"Commons (GDC) API. **All {len(TCGA_PROJECTS)} TCGA cancer types** are supported, "
+    f"including 10 rare cancers and 2 hematologic malignancies. STAR-Counts gene expression "
+    f"quantification files provide Transcripts Per Million (TPM) values from the STAR aligner "
+    f"against GRCh38/hg38 with GENCODE v36 annotations."
 )
 st.markdown(
     "**Normal tissue baseline:** The Genotype-Tissue Expression (GTEx) project "
@@ -87,14 +88,37 @@ st.markdown(
 # Show TCGA → GTEx mapping table
 mapping_rows = []
 for proj, name in sorted(TCGA_TO_GTEX_TISSUE.items()):
-    from config import TCGA_PROJECTS
     mapping_rows.append({
         "TCGA Project": proj,
         "Cancer Type": TCGA_PROJECTS.get(proj, ""),
         "GTEx Normal Tissue": name.replace("_", " "),
     })
 mapping_df = pd.DataFrame(mapping_rows)
-st.dataframe(mapping_df, use_container_width=True, hide_index=True, height=300)
+st.dataframe(mapping_df, use_container_width=True, hide_index=True, height=400)
+
+st.markdown("#### GTEx Mapping Notes")
+st.markdown(
+    "Not all TCGA cancer types have an exact match in GTEx. Approximate mappings are used "
+    "where necessary:"
+)
+st.markdown(
+    "- **TCGA-READ** (Rectum) → Colon Transverse — rectum not available in GTEx; colon is anatomically closest.\n"
+    "- **TCGA-MESO** (Mesothelioma) → Lung — pleural mesothelioma originates in the lung lining.\n"
+    "- **TCGA-SARC** (Sarcoma) → Adipose Subcutaneous — soft tissue sarcomas arise from mesenchymal tissue; adipose is the closest available.\n"
+    "- **TCGA-THYM** (Thymoma) → Blood Vessel — no thymus tissue in GTEx; vascular endothelium is a rough proxy.\n"
+    "- **TCGA-UVM** (Uveal Melanoma) → Skin Sun Exposed — no eye tissue in GTEx; melanocyte lineage shared with skin.\n"
+    "- **TCGA-CHOL** (Cholangiocarcinoma) → Liver — bile duct epithelium originates from hepatic tissue.\n"
+    "- **TCGA-PCPG** (Pheochromocytoma) → Adrenal Gland — correct anatomical origin.\n"
+    "- **TCGA-LAML** (Acute Myeloid Leukemia) → Whole Blood — hematologic cancer; myeloid origin.\n"
+    "- **TCGA-DLBC** (Diffuse Large B-Cell Lymphoma) → EBV-transformed Lymphocytes — B-cell baseline "
+    "matching the cell of origin. Shows what malignant transformation upregulates vs normal B cells."
+)
+st.markdown(
+    "⚠ **Hematologic cancers** (TCGA-LAML, TCGA-DLBC) lack a traditional solid tumor microenvironment. "
+    "The receptor-ligand co-activation framework was designed for solid tumors where TME cells "
+    "express suppressive ligands. Results for blood cancers should be interpreted as reflecting "
+    "the bone marrow/lymphoid microenvironment rather than a classic solid TME."
+)
 
 st.markdown("### Why Transcript Levels Are a Reasonable Approximation")
 st.markdown(
@@ -577,5 +601,5 @@ st.markdown(
 st.markdown("---")
 st.caption(
     f"Literature Overview · {len(RECEPTORS)} receptors · {len(LIGANDS)} ligands · "
-    "References link to PubMed"
+    f"{len(TCGA_PROJECTS)} cancer types · References link to PubMed"
 )

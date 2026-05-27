@@ -360,6 +360,7 @@ RECEPTORS = {
 GENE_ENSEMBL = {gene: info["ensembl"] for gene, info in RECEPTORS.items()}
 
 TCGA_PROJECTS = {
+    # ── Major solid tumors (original 15) ─────────────────────────────────
     "TCGA-BRCA": "Breast Invasive Carcinoma",
     "TCGA-LUAD": "Lung Adenocarcinoma",
     "TCGA-LUSC": "Lung Squamous Cell Carcinoma",
@@ -375,6 +376,26 @@ TCGA_PROJECTS = {
     "TCGA-UCEC": "Uterine Corpus Endometrial Carcinoma",
     "TCGA-PAAD": "Pancreatic Adenocarcinoma",
     "TCGA-STAD": "Stomach Adenocarcinoma",
+    # ── Additional solid tumors ──────────────────────────────────────────
+    "TCGA-CESC": "Cervical Squamous Cell Carcinoma",
+    "TCGA-READ": "Rectum Adenocarcinoma",
+    "TCGA-ESCA": "Esophageal Carcinoma",
+    "TCGA-KICH": "Kidney Chromophobe",
+    "TCGA-KIRP": "Kidney Renal Papillary Cell Carcinoma",
+    "TCGA-LGG":  "Brain Lower Grade Glioma",
+    "TCGA-MESO": "Mesothelioma",
+    "TCGA-SARC": "Sarcoma",
+    "TCGA-TGCT": "Testicular Germ Cell Tumors",
+    "TCGA-THCA": "Thyroid Carcinoma",
+    "TCGA-THYM": "Thymoma",
+    "TCGA-UCS":  "Uterine Carcinosarcoma",
+    "TCGA-UVM":  "Uveal Melanoma",
+    "TCGA-ACC":  "Adrenocortical Carcinoma",
+    "TCGA-CHOL": "Cholangiocarcinoma",
+    "TCGA-PCPG": "Pheochromocytoma & Paraganglioma",
+    # ── Hematologic (no solid TME — interpret with caution) ──────────────
+    "TCGA-LAML": "Acute Myeloid Leukemia",
+    "TCGA-DLBC": "Diffuse Large B-Cell Lymphoma",
 }
 
 # TCGA project → corresponding GTEx normal tissue (for baseline)
@@ -386,7 +407,7 @@ TCGA_TO_GTEX_TISSUE = {
     "TCGA-SKCM": "Skin_Sun_Exposed_Lower_leg",
     "TCGA-COAD": "Colon_Transverse",
     "TCGA-BLCA": "Bladder",
-    "TCGA-HNSC": "Minor_Salivary_Gland",       # closest available
+    "TCGA-HNSC": "Minor_Salivary_Gland",
     "TCGA-KIRC": "Kidney_Cortex",
     "TCGA-LIHC": "Liver",
     "TCGA-PRAD": "Prostate",
@@ -395,6 +416,25 @@ TCGA_TO_GTEX_TISSUE = {
     "TCGA-UCEC": "Uterus",
     "TCGA-PAAD": "Pancreas",
     "TCGA-STAD": "Stomach",
+    # ── New mappings ─────────────────────────────────────────────────────
+    "TCGA-CESC": "Cervix_Ectocervix",
+    "TCGA-READ": "Colon_Transverse",               # closest: rectum not in GTEx
+    "TCGA-ESCA": "Esophagus_Mucosa",
+    "TCGA-KICH": "Kidney_Cortex",                   # same kidney tissue
+    "TCGA-KIRP": "Kidney_Cortex",                   # same kidney tissue
+    "TCGA-LGG":  "Brain_Cortex",                    # same brain tissue as GBM
+    "TCGA-MESO": "Lung",                            # closest: pleural lining → lung
+    "TCGA-SARC": "Adipose_Subcutaneous",            # closest: soft tissue
+    "TCGA-TGCT": "Testis",
+    "TCGA-THCA": "Thyroid",
+    "TCGA-THYM": "Blood_Vessel",                    # no thymus in GTEx; vascular closest
+    "TCGA-UCS":  "Uterus",                          # same as UCEC
+    "TCGA-UVM":  "Skin_Sun_Exposed_Lower_leg",      # no eye in GTEx; skin melanocyte origin
+    "TCGA-ACC":  "Adrenal_Gland",
+    "TCGA-CHOL": "Liver",                           # bile duct → liver closest
+    "TCGA-PCPG": "Adrenal_Gland",                   # adrenal medulla origin
+    "TCGA-LAML": "Whole_Blood",                     # blood cancer — myeloid origin
+    "TCGA-DLBC": "Cells_EBV-transformed_lymphocytes", # B-cell lymphoma → B-cell baseline
 }
 
 GTEX_API_BASE = "https://gtexportal.org/api/v2"

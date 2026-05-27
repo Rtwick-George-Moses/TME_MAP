@@ -8,7 +8,7 @@ A Streamlit app that analyzes how the tumor microenvironment (TME) suppresses T 
 
 For a given cancer type, this tool answers three questions:
 
-1. **Which inhibitory pathways is the TME engaging?** — By measuring the expression of 23 TME ligands that bind 16 T cell inhibitory receptors, compared against GTEx normal tissue baselines.
+1. **Which inhibitory pathways is the TME engaging?** — By measuring the expression of 29 TME ligands that bind 16 T cell inhibitory receptors, compared against GTEx normal tissue baselines.
 
 2. **How much is each pathway upregulated?** — All values are reported as log₂ fold-change over normal tissue (e.g., log₂FC = 3 means the ligand is 8× higher in tumor than in healthy tissue of the same organ).
 
@@ -29,7 +29,7 @@ For a given cancer type, this tool answers three questions:
 | Metabolic Exhaustion Markers | CD39 |
 | Additional Inhibitory Receptors | LAIR-1, ILT2 (LILRB1) |
 
-**23 TME ligands** including PD-L1, PD-L2, B7-1/B7-2, FGL1, Galectin-3, Galectin-9, HMGB1, CD155, CD112, HVEM, HLA-E, HLA-G, E-cadherin, COL1A1, CD48, CD73, A2A receptor, VSIG3, CD200, IDO1, B7-H3, B7-H4.
+**29 TME ligands** including PD-L1, PD-L2, B7-1/B7-2, FGL1, Galectin-3, LSECtin, Galectin-9, HMGB1, CEACAM1, CD155, CD112, CD113, CD111, HVEM, HLA-E, HLA-G, E-cadherin, N-cadherin, R-cadherin, COL1A1, CD48, CD73, A2A receptor, VSIG3, CD200, IDO1, B7-H3, B7-H4.
 
 ---
 

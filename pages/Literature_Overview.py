@@ -312,13 +312,30 @@ st.markdown(
     "HVEM in a given sample."
 )
 st.markdown(
-    "**CD39 (ENTPD1) / CD73 (NT5E) / A2A receptor (ADORA2A) — the adenosine pathway:** "
-    "This is not a classical receptor-ligand pair. CD39 is an ectoenzyme on T cells and "
-    "Tregs that converts extracellular ATP → AMP. CD73 (on tumor and stromal cells) then "
-    "converts AMP → adenosine. Adenosine binds the A2A receptor (on T cells) to suppress "
-    "their function. We track CD73 and A2A as \"ligands\" for CD39 because their co-expression "
-    "indicates an active adenosine-mediated suppressive pathway, but the biology is a "
-    "three-step metabolic cascade rather than a direct receptor-ligand binding event."
+    "**CEACAM1 → TIM-3:** CEACAM1 functions as a cis-ligand for TIM-3, meaning both "
+    "molecules are co-expressed on the same T cell surface and interact in cis rather "
+    "than in trans (across cells). This cis-interaction is required for TIM-3's inhibitory "
+    "signaling. We track CEACAM1 as a TIM-3 'ligand' because its expression in the bulk "
+    "tumor sample reflects the availability of CEACAM1 to stabilize TIM-3 signaling, "
+    "but the interaction is mechanistically different from a TME-derived ligand like PD-L1."
+)
+st.markdown(
+    "**A2A receptor (ADORA2A) / CD39 (ENTPD1) / CD73 (NT5E) — the adenosine pathway:** "
+    "A2A is the actual inhibitory receptor on T cells — a GPCR that binds extracellular "
+    "adenosine and suppresses T cell function via cAMP elevation. CD39 and CD73 are the "
+    "enzymes that generate adenosine: CD39 (on exhausted T cells and Tregs) converts "
+    "ATP → AMP, and CD73 (on tumor and stromal cells) converts AMP → adenosine. We model "
+    "A2A as the receptor and CD39+CD73 as its 'ligands' because their expression indicates "
+    "adenosine is being generated to engage A2A. This is a three-step metabolic cascade "
+    "rather than a direct receptor-ligand binding event — CD39 and CD73 don't bind A2A "
+    "directly, but their co-expression is the best RNA-seq proxy for adenosine pathway "
+    "activation."
+)
+st.markdown(
+    "**LSECtin (CLEC4G) → LAG-3:** LSECtin was originally characterized in liver sinusoidal "
+    "endothelial cells but is also expressed on melanoma and other tumor cells. It binds "
+    "LAG-3 and inhibits IFN-γ production from T cells. Its expression is tissue-dependent "
+    "and may be very low outside liver-related cancers."
 )
 
 rl_rows = []

@@ -163,7 +163,7 @@ def download_expression_batch(file_ids):
 
 def download_all_expression(file_ids, max_samples):
     """Download expression in batches with progress."""
-    fids = file_ids[:max_samples]
+    fids = file_ids if max_samples <= 0 else file_ids[:max_samples]
     total = len(fids)
     batches = [fids[i:i+BATCH_SIZE] for i in range(0, total, BATCH_SIZE)]
 
@@ -227,7 +227,6 @@ def save_project(conn, project_id, demo_df, expression_records, file_to_case):
     # Clear existing data for this project
     c.execute("DELETE FROM demographics WHERE project_id = ?", (project_id,))
     c.execute("DELETE FROM expression WHERE project_id = ?", (project_id,))
-    c.execute("DELETE FROM gtex_baseline WHERE project_id = ?", (project_id,))
 
     # Insert demographics
     if not demo_df.empty:
@@ -262,7 +261,7 @@ def save_project(conn, project_id, demo_df, expression_records, file_to_case):
 def main():
     parser = argparse.ArgumentParser(description="Download TCGA data to SQLite for offline use")
     parser.add_argument("--db", default=DEFAULT_DB, help=f"Output database path (default: {DEFAULT_DB})")
-    parser.add_argument("--max-samples", type=int, default=300, help="Max samples per project (default: 300)")
+    parser.add_argument("--max-samples", type=int, default=0, help="Max samples per project (0 = all, default: all)")
     parser.add_argument("--projects", nargs="*", default=None,
                         help="Specific projects to download (default: all)")
     args = parser.parse_args()
@@ -278,7 +277,7 @@ def main():
     print(f"TCGA Data Downloader → SQLite")
     print(f"Database: {args.db}")
     print(f"Projects: {len(projects)}")
-    print(f"Max samples per project: {args.max_samples}")
+    print(f"Max samples per project: {'all' if args.max_samples <= 0 else args.max_samples}")
     print(f"Genes tracked: {len(ALL_GENE_ENSEMBL)} ({len(RECEPTORS)} receptors + {len(LIGANDS)} ligands)")
     print(f"═══════════════════════════════════════════════════════\n")
 

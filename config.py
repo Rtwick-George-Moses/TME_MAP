@@ -287,26 +287,28 @@ RECEPTORS = {
         ],
     },
 
-    # ── Metabolic exhaustion marker on T cells ───────────────────────────
-    "ENTPD1": {
-        "label": "CD39",
+    # ── Adenosine pathway receptor on T cells ──────────────────────────────
+    "ADORA2A": {
+        "label": "A2A Receptor",
         "family": "Metabolic Exhaustion Markers",
-        "ensembl": "ENSG00000138185",
-        "chromosome": "10q24.1",
-        "desc": "ATP→AMP; marks tumor-reactive exhausted CD8 T cells",
+        "ensembl": "ENSG00000128271",
+        "chromosome": "22q11.23",
+        "desc": "Adenosine receptor; GPCR; suppresses T cell function via cAMP",
         "mechanism": (
-            "CD39 (ENTPD1) is an ectonucleotidase expressed on the surface of exhausted T cells "
-            "that hydrolyzes extracellular ATP to AMP. AMP is then converted to adenosine by "
-            "CD73, creating an immunosuppressive adenosine-rich microenvironment that signals "
-            "through A2A receptors to further inhibit T cell function via cAMP elevation. "
-            "CD39+ CD8+ T cells represent the tumor-reactive, chronically stimulated exhausted "
-            "population (as opposed to bystander T cells which are CD39-). CD39 expression is "
-            "driven by chronic TCR signaling and the HIF-1α hypoxia response pathway."
+            "The A2A receptor (ADORA2A) is a G-protein coupled receptor on T cells that binds "
+            "extracellular adenosine — the end product of the CD39/CD73 ectonucleotidase pathway. "
+            "In the tumor microenvironment, CD39 (on exhausted T cells and Tregs) hydrolyzes ATP "
+            "to AMP, and CD73 (on tumor and stromal cells) converts AMP to adenosine. When "
+            "adenosine engages A2A, it activates adenylyl cyclase, elevating intracellular cAMP "
+            "and suppressing TCR signaling, cytokine production (IFN-γ, TNF-α, IL-2), and "
+            "cytotoxic function. A2A signaling also promotes Treg differentiation and inhibits "
+            "NK cell cytotoxicity. A2A receptor blockade is under clinical investigation as "
+            "an immunotherapy strategy (e.g., ciforadenant/CPI-444)."
         ),
         "references": [
-            "Gupta PK et al. (2015) J Clin Invest 125:2330-2340. PMID: 25961457",
-            "Simoni Y et al. (2018) Nature 557:575-579. PMID: 29769722",
-            "Duhen T et al. (2018) Nat Commun 9:2724. PMID: 30006565",
+            "Ohta A et al. (2006) Proc Natl Acad Sci USA 103:13132-13137. PMID: 16916931",
+            "Vigano S et al. (2019) Front Immunol 10:925. PMID: 31114584",
+            "Fong L et al. (2020) Cancer Discov 10:40-51. PMID: 31732494",
         ],
     },
 
@@ -433,13 +435,16 @@ LIGANDS = {
     # LAG-3 ligands
     "FGL1":     {"ensembl": "ENSG00000104760", "label": "FGL1",         "receptors": ["LAG3"]},
     "LGALS3":   {"ensembl": "ENSG00000131981", "label": "Galectin-3",   "receptors": ["LAG3"]},
+    "CLEC4G":   {"ensembl": "ENSG00000182566", "label": "LSECtin (CLEC4G)", "receptors": ["LAG3"]},
     # TIM-3 ligands
     "LGALS9":   {"ensembl": "ENSG00000168961", "label": "Galectin-9",   "receptors": ["HAVCR2"]},
     "HMGB1":    {"ensembl": "ENSG00000189403", "label": "HMGB1",        "receptors": ["HAVCR2"]},
-    # CEACAM1 also serves as TIM-3 cis-ligand (already tracked as receptor)
+    "CEACAM1":  {"ensembl": "ENSG00000079385", "label": "CEACAM1",      "receptors": ["HAVCR2"]},
     # TIGIT / CD96 ligands
     "PVR":      {"ensembl": "ENSG00000073008", "label": "CD155 (PVR)",  "receptors": ["TIGIT", "CD96"]},
     "PVRL2":    {"ensembl": "ENSG00000130202", "label": "CD112 (Nectin-2)", "receptors": ["TIGIT"]},
+    "NECTIN3":  {"ensembl": "ENSG00000078043", "label": "CD113 (Nectin-3)", "receptors": ["TIGIT"]},
+    "NECTIN1":  {"ensembl": "ENSG00000110400", "label": "CD111 (Nectin-1)", "receptors": ["CD96"]},
     # BTLA / CD160 ligand
     "TNFRSF14": {"ensembl": "ENSG00000157873", "label": "HVEM",         "receptors": ["BTLA", "CD160"]},
     # 2B4 (CD244) ligand
@@ -448,20 +453,19 @@ LIGANDS = {
     "VSIG3":    {"ensembl": "ENSG00000155659", "label": "VSIG3 (IGSF11)", "receptors": ["VSIR"]},
     # CD200R ligand
     "CD200":    {"ensembl": "ENSG00000091972", "label": "CD200",        "receptors": ["CD200R1"]},
-    # KLRG1 ligand
+    # KLRG1 ligands (cadherins)
     "CDH1":     {"ensembl": "ENSG00000039068", "label": "E-cadherin",   "receptors": ["KLRG1"]},
+    "CDH2":     {"ensembl": "ENSG00000170558", "label": "N-cadherin",   "receptors": ["KLRG1"]},
+    "CDH4":     {"ensembl": "ENSG00000179242", "label": "R-cadherin",   "receptors": ["KLRG1"]},
     # NKG2A ligand
     "HLA_E":    {"ensembl": "ENSG00000204592", "label": "HLA-E",        "receptors": ["KLRC1"]},
     # LAIR-1 ligand (collagen — use COL1A1 as representative)
     "COL1A1":   {"ensembl": "ENSG00000108821", "label": "Collagen-I (COL1A1)", "receptors": ["LAIR1"]},
     # LILRB1 ligand
     "HLA_G":    {"ensembl": "ENSG00000204632", "label": "HLA-G",        "receptors": ["LILRB1"]},
-    # CD39 works with CD73 to generate adenosine
-    "NT5E":     {"ensembl": "ENSG00000135318", "label": "CD73 (NT5E)",  "receptors": ["ENTPD1"]},
-    # SLAMF6 self-ligand (homophilic — track its own expression as proxy)
-    # SLAMF7 self-ligand (homophilic — same)
-    # Adenosine receptor on T cells (downstream of CD39/CD73 axis)
-    "ADORA2A":  {"ensembl": "ENSG00000128271", "label": "A2A receptor",  "receptors": ["ENTPD1"]},
+    # Adenosine pathway: CD39 + CD73 generate adenosine → engages A2A receptor
+    "ENTPD1":   {"ensembl": "ENSG00000138185", "label": "CD39 (ENTPD1)", "receptors": ["ADORA2A"]},
+    "NT5E":     {"ensembl": "ENSG00000135318", "label": "CD73 (NT5E)",  "receptors": ["ADORA2A"]},
     # IDO1 — immunosuppressive enzyme in TME (tryptophan catabolism)
     "IDO1":     {"ensembl": "ENSG00000131203", "label": "IDO1",          "receptors": []},
     # CD276 (B7-H3) — broad TME suppressive molecule

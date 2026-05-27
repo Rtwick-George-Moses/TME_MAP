@@ -266,6 +266,53 @@ st.markdown(
     "evolves with disease progression."
 )
 
+st.markdown("### Sample Size Independence")
+st.markdown(
+    "TCGA cohorts vary significantly in size — TCGA-BRCA has ~1095 patients while "
+    "TCGA-PAAD has ~178. A natural question is whether the metrics in this tool are "
+    "biased by sample count. Here is why they are not:"
+)
+st.markdown(
+    "**log₂ fold-change** is computed as log₂(mean_tumor_TPM / GTEx_normal_TPM). "
+    "The mean is already a per-patient average — it produces one value regardless "
+    "of whether 178 or 1095 patients contributed. Larger cohorts give a more precise "
+    "estimate of the true mean, but the value itself does not inflate with n."
+)
+st.markdown(
+    "**Spearman correlation (ρ)** is a rank-based statistic. The ρ value measures "
+    "the strength of monotonic association between two variables, independent of "
+    "sample size. What does depend on n is statistical significance: with 1095 patients, "
+    "even a tiny ρ = 0.08 can achieve p < 0.05, while with 178 patients you need "
+    "ρ ≈ 0.15. This is why we filter on **effect size (|ρ| threshold)** rather than "
+    "relying solely on p-values. The default |ρ| ≥ 0.5 ensures that only biologically "
+    "meaningful correlations appear as edges, regardless of cohort size."
+)
+st.markdown(
+    "**Q1/Q3 error bars and violin shapes** are quantiles and kernel density estimates "
+    "of the per-patient distribution. More patients produce smoother, more precise "
+    "estimates of the true distribution shape, but the quartile values themselves "
+    "do not scale with n."
+)
+st.markdown(
+    "**Ligand activation scores** are computed per-patient (sum of ligand TPMs for "
+    "each individual), then correlated across patients. The per-patient score is "
+    "independent of how many other patients exist in the cohort."
+)
+st.markdown(
+    "**Population comparison chart** is the one area where sample size matters most. "
+    "If White patients have n=800 and Black patients have n=50, the White mean is much "
+    "more precisely estimated. We show sample counts in the axis labels (e.g., "
+    "'White (n=800)') so readers can assess the reliability of each group's estimate. "
+    "These are exploratory observations — formal comparisons would require matched "
+    "cohorts and statistical testing with appropriate correction for confounders."
+)
+st.markdown(
+    "**The ridgeline histogram bars** show raw frequency counts within each receptor's "
+    "row. Since every patient has every gene measured, all receptors within a project "
+    "share the same n — the bar heights reflect the shape of the distribution, not "
+    "differences in sample availability. No normalization is needed."
+)
+
 st.markdown("### Methodology References")
 method_refs = [
     ("Thorsson V et al. (2018). \"The Immune Landscape of Cancer.\" <i>Immunity</i> 48(4):812-830.", "29628290"),

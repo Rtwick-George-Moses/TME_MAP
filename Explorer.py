@@ -303,12 +303,12 @@ def _download_batch(_batch_ids_tuple):
     return records
 
 
-def download_expression_batched(file_ids, max_files=200, batch_size=25, progress_bar=None):
+def download_expression_batched(file_ids, max_files=0, batch_size=25, progress_bar=None):
     """
     Download expression data in batches with progress updates.
     Each batch is independently cached via _download_batch.
     """
-    fids = file_ids[:max_files]
+    fids = file_ids if max_files <= 0 else file_ids[:max_files]
     total = len(fids)
 
     # Split into batches
@@ -341,7 +341,7 @@ def download_expression_batched(file_ids, max_files=200, batch_size=25, progress
     return expr
 
 
-def get_full_dataset(project_id, max_samples=200, progress_bar=None):
+def get_full_dataset(project_id, max_samples=0, progress_bar=None):
     """
     Load data for a project. Tries local SQLite DB first,
     falls back to live GDC API if DB unavailable.
@@ -383,11 +383,11 @@ def get_full_dataset(project_id, max_samples=200, progress_bar=None):
     _update(15, f"Found {len(demo)} cases. Locating expression files...")
 
     files = fetch_expression_file_ids(project_id).drop_duplicates(subset="case_id", keep="first")
-    n_files = min(len(files), max_samples)
+    n_files = len(files) if max_samples <= 0 else min(len(files), max_samples)
     _update(20, f"Found {len(files)} files. Preparing to download {n_files} profiles...")
 
-    fids = files["file_id"].tolist()[:max_samples]
-    expr = download_expression_batched(fids, max_files=max_samples, batch_size=25, progress_bar=progress_bar)
+    fids = files["file_id"].tolist() if max_samples <= 0 else files["file_id"].tolist()[:max_samples]
+    expr = download_expression_batched(fids, max_files=0, batch_size=25, progress_bar=progress_bar)
     _update(78, f"Extracted {len(expr)} samples. Mapping to cases...")
 
     f2c = dict(zip(files["file_id"], files["case_id"]))
@@ -741,12 +741,12 @@ def create_network(G, pos, title="", activation_scores=None, gtex_baseline=None,
         lgs = [lg for lg, li in LIGANDS.items()
                if rg in li.get("receptors", []) and ligand_df is not None and lg in ligand_df.columns]
         if lgs and ligand_df is not None:
-            total_fc = 0
-            for lg in lgs:
-                lin = np.power(2, ligand_df[lg]) - 1
-                bl = max(_baseline.get(lg, 0), 0.1)
-                total_fc += max(0, np.log2((lin.mean() + 0.1) / bl))
-            mean_log2fc[rg] = total_fc
+            # Sum ligands in linear TPM, sum baselines in linear TPM, then one log₂FC
+            tumor_sum = sum(
+                (np.power(2, ligand_df[lg]) - 1).mean() for lg in lgs
+            )
+            normal_sum = sum(max(_baseline.get(lg, 0), 0.1) for lg in lgs)
+            mean_log2fc[rg] = max(0, np.log2((tumor_sum + 0.1) / normal_sum))
 
     fv = list(mean_log2fc.values()) if mean_log2fc else [0]
     fmin = min(fv); fmax = max(fv); frng = fmax - fmin if fmax > fmin else 1
@@ -887,12 +887,11 @@ def create_network(G, pos, title="", activation_scores=None, gtex_baseline=None,
 
 def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
     """
-    Per-receptor ligand activation distribution showing individual ligand contributions.
-    Each receptor row has overlaid violins colored by ligand.
+    Ridgeline density plot: each receptor gets its own row with per-ligand
+    density curves, stacked vertically with slight overlap.
     """
     baseline = compute_tissue_baseline(ligand_df, gtex_baseline=gtex_baseline) if ligand_df is not None else {}
 
-    # Build per-patient, per-ligand, per-receptor data
     rows = []
     receptor_medians = {}
     for gene, rinfo in RECEPTORS.items():
@@ -903,7 +902,6 @@ def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
         if not lig_genes or ligand_df is None:
             continue
 
-        # Per-ligand log₂FC for each patient
         for lg, linfo in lig_genes:
             linear = np.power(2, ligand_df[lg]) - 1
             bl = max(baseline.get(lg, 0), 0.1)
@@ -918,15 +916,10 @@ def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
                     "log₂FC": val,
                 })
 
-        # Also compute total for sorting
-        linear_sum = pd.Series(0.0, index=ligand_df.index)
-        baseline_sum = 0.0
-        for lg, linfo in lig_genes:
-            linear_sum += np.power(2, ligand_df[lg]) - 1
-            baseline_sum += max(baseline.get(lg, 0), 0.1)
-        total_fc = np.log2((linear_sum + 0.1) / max(baseline_sum, 0.1))
-        total_fc = total_fc.loc[total_fc.index.isin(df.index)]
-        receptor_medians[rinfo["label"]] = total_fc.median()
+        # Total for sorting (correct: sum linear then one FC)
+        tumor_sum = sum((np.power(2, ligand_df[lg]) - 1).loc[ligand_df.index.isin(df.index)].mean() for lg, _ in lig_genes)
+        normal_sum = sum(max(baseline.get(lg, 0), 0.1) for lg, _ in lig_genes)
+        receptor_medians[rinfo["label"]] = max(0, np.log2((tumor_sum + 0.1) / normal_sum))
 
     if not rows:
         fig = go.Figure()
@@ -935,63 +928,119 @@ def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
 
     rdf = pd.DataFrame(rows)
 
-    # Sort receptors by median total activation descending
     receptor_order = sorted(receptor_medians.keys(), key=lambda r: receptor_medians[r], reverse=True)
 
     # Consistent ligand colors
     all_ligands = rdf["Ligand"].unique().tolist()
-    colors = px.colors.qualitative.Plotly + px.colors.qualitative.D3
-    ligand_colors = {lig: colors[i % len(colors)] for i, lig in enumerate(all_ligands)}
+    colors_list = px.colors.qualitative.Plotly + px.colors.qualitative.D3
+    ligand_colors = {lig: colors_list[i % len(colors_list)] for i, lig in enumerate(all_ligands)}
 
-    fig = go.Figure()
+    # Build ridgeline using subplots — one row per receptor
+    from plotly.subplots import make_subplots
 
-    # Track which ligands we've added to legend
+    n_receptors = len(receptor_order)
+    fig = make_subplots(
+        rows=n_receptors, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.0,
+        subplot_titles=None,
+    )
+
     legend_shown = set()
 
-    for receptor_name in reversed(receptor_order):
+    for ri, receptor_name in enumerate(receptor_order):
+        row_idx = ri + 1
         sub = rdf[rdf["Receptor"] == receptor_name]
         ligands_in_receptor = sub["Ligand"].unique()
 
+        # ── Histogram bars (behind KDE) — pooled per-ligand values, same x-range as KDE ──
+        all_vals = sub["log₂FC"].dropna().values
+        n_ligands = len(ligands_in_receptor)
+        if len(all_vals) > 0:
+            counts, bin_edges = np.histogram(all_vals, bins=30)
+            # Divide by number of ligands to approximate per-patient count
+            patient_approx = np.round(counts / max(n_ligands, 1)).astype(int)
+            counts_norm = counts / counts.max() * 0.6 if counts.max() > 0 else counts
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            bin_width = bin_edges[1] - bin_edges[0]
+
+            fig.add_trace(go.Bar(
+                x=bin_centers, y=counts_norm,
+                width=bin_width * 0.9,
+                marker=dict(color="rgba(180,180,180,0.3)", line=dict(width=0)),
+                showlegend=False,
+                customdata=patient_approx,
+                hovertemplate=f"<b>{receptor_name}</b><br>log₂FC: %{{x:.2f}}<br>~%{{customdata}} patients<extra></extra>",
+            ), row=row_idx, col=1)
+
+        # ── KDE curves per ligand (on top) ──
         for lig_name in ligands_in_receptor:
             lig_sub = sub[sub["Ligand"] == lig_name]
             show_legend = lig_name not in legend_shown
             legend_shown.add(lig_name)
 
-            fig.add_trace(go.Violin(
-                x=lig_sub["log₂FC"],
-                y=[receptor_name] * len(lig_sub),
-                orientation="h",
-                side="positive",
-                width=1.5,
-                line_color=ligand_colors[lig_name],
-                fillcolor=ligand_colors[lig_name],
-                opacity=0.5,
-                meanline_visible=True,
+            from scipy.stats import gaussian_kde
+            vals = lig_sub["log₂FC"].dropna().values
+            if len(vals) < 3:
+                continue
+
+            try:
+                kde = gaussian_kde(vals, bw_method=0.3)
+            except Exception:
+                continue
+
+            x_grid = np.linspace(vals.min() - 1, vals.max() + 1, 200)
+            y_kde = kde(x_grid)
+            y_kde = y_kde / y_kde.max() if y_kde.max() > 0 else y_kde
+
+            color = ligand_colors[lig_name]
+            import plotly.colors as pc
+            rgb = pc.hex_to_rgb(color) if color.startswith("#") else (99, 110, 250)
+            fill_color = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.35)"
+            line_color = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.85)"
+
+            fig.add_trace(go.Scatter(
+                x=x_grid, y=y_kde,
+                mode="lines",
+                fill="tozeroy",
+                fillcolor=fill_color,
+                line=dict(color=line_color, width=1.5),
                 name=lig_name,
                 legendgroup=lig_name,
                 showlegend=show_legend,
-                hovertemplate=(
-                    f"<b>{receptor_name}</b> ← {lig_name}<br>"
-                    "log₂FC: %{x:.2f}<extra></extra>"
-                ),
-                scalemode="width",
-            ))
+                hovertemplate=f"<b>{receptor_name}</b> ← {lig_name}<br>log₂FC: %{{x:.2f}}<extra></extra>",
+            ), row=row_idx, col=1)
 
-    fig.update_layout(
-        title=f"Ligand Activation Distribution per Receptor — {TCGA_PROJECTS[project_id]}",
-        xaxis_title="log₂(Ligand TPM / Normal)",
-        yaxis=dict(categoryorder="array", categoryarray=receptor_order),
-        height=max(600, len(receptor_order) * 55),
-        margin=dict(l=140, r=20, t=50, b=50),
-        template="plotly",
-        violingap=0.05,
-        violinmode="overlay",
-        legend_title="TME Ligand",
+        # Add receptor label on the y-axis
+        fig.update_yaxes(
+            title_text=receptor_name,
+            title_font=dict(size=10),
+            title_standoff=5,
+            showticklabels=False,
+            showgrid=False,
+            zeroline=False,
+            row=row_idx, col=1,
+        )
+
+        # Add zero reference line per subplot
+        fig.add_vline(x=0, line_dash="dot", line_color="gray", opacity=0.3,
+                       row=row_idx, col=1)
+
+    # Only show x-axis on bottom
+    fig.update_xaxes(
+        title_text="log₂(Ligand TPM / Normal)",
+        row=n_receptors, col=1,
     )
 
-    # Zero reference line
-    fig.add_vline(x=0, line_dash="dash", line_color="gray", opacity=0.5,
-                  annotation_text="Normal", annotation_position="top")
+    fig.update_layout(
+        title=f"Ligand Activation Ridgeline — {TCGA_PROJECTS[project_id]}",
+        height=max(600, n_receptors * 70),
+        margin=dict(l=120, r=20, t=50, b=50),
+        template="plotly",
+        legend_title="TME Ligand",
+        showlegend=True,
+        barmode="overlay",
+    )
 
     return fig
 
@@ -1223,8 +1272,6 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("#### Network Parameters")
-    corr_threshold = st.slider("Min |ρ| threshold", 0.1, 0.8, 0.50, 0.05,
-        help="Minimum absolute Spearman ρ between ligand activation scores to draw an edge.")
     p_threshold = st.select_slider("p-value", [0.001, 0.005, 0.01, 0.05], value=0.05)
     st.markdown("---")
     db_status = f"**Local DB found** (`tcga_data.db`)" if DB_AVAILABLE else "No local DB — using GDC API"
@@ -1296,7 +1343,7 @@ n_active_l = len(ACTIVE_LIGANDS)
 progress_bar = st.progress(0, text="Loading data...")
 try:
     receptor_df, ligand_df, demo_df, data_source = get_full_dataset(
-        project_id, max_samples=99999, progress_bar=progress_bar
+        project_id, max_samples=0, progress_bar=progress_bar
     )
     progress_bar.empty()
 except GDCError as e:
@@ -1331,22 +1378,27 @@ else:
 
 st.markdown(f"##### {TCGA_PROJECTS[project_id]} · {population}")
 
-# Segmented control for stage
-selected_stage = st.segmented_control(
-    "Cancer Stage (AJCC Pathologic)",
-    options=stage_options,
-    default="All Stages",
-    help="Filter patients by AJCC pathologic stage at diagnosis. Stage data from GDC clinical records.",
-)
-if selected_stage is None:
-    selected_stage = "All Stages"
+# Stage + threshold in one row
+col_stage, col_thresh = st.columns([4, 1], gap="small")
+with col_stage:
+    selected_stage = st.segmented_control(
+        "Cancer Stage (AJCC Pathologic)",
+        options=stage_options,
+        default="All Stages",
+        help="Filter patients by AJCC pathologic stage at diagnosis. Stage data from GDC clinical records.",
+    )
+    if selected_stage is None:
+        selected_stage = "All Stages"
+with col_thresh:
+    corr_threshold = st.slider("Min |ρ| correlation threshold", 0.1, 0.8, 0.50, 0.05,
+        help="Minimum absolute Spearman ρ between ligand activation scores to draw an edge.")
 
 bl_status = f"GTEx baseline ({gtex_tissue}) ✓" if not gtex_baseline.empty else "cohort baseline"
 if data_source == "LOCAL DB":
     db_size = os.path.getsize(DB_PATH) / (1024*1024)
-    st.markdown(f'<span class="gdc-badge gdc-live">● OFFLINE — DB ({db_size:.0f} MB) · {bl_status} · UQ-norm</span>', unsafe_allow_html=True)
+    st.caption(f"● OFFLINE — DB ({db_size:.0f} MB) · {bl_status} · UQ-norm")
 else:
-    st.markdown(f'<span class="gdc-badge gdc-live">● LIVE — GDC API · {bl_status} · UQ-norm</span>', unsafe_allow_html=True)
+    st.caption(f"● LIVE — GDC API · {bl_status} · UQ-norm")
 
 # ── Apply filters: population + stage ────────────────────────────────────────
 filter_idx = demo_df.index  # start with all
@@ -1413,6 +1465,19 @@ st.caption(
     "**Dashed** = also shares a ligand. **Black dotted** = identical ligand set. "
     "**Dashed orange** = shared ligand, no significant ρ."
 )
+with st.expander("How to read this graph"):
+    st.markdown(
+        "Each **node** is an inhibitory receptor on T cells. Its **size** shows how much "
+        "the TME upregulates that receptor's ligands compared to healthy tissue (log₂FC). "
+        "Bigger = more suppressive pressure.\n\n"
+        "Each **edge** connects two receptors whose ligand activation scores are correlated "
+        "across patients. **Blue** = both go up together (co-activation). **Red** = when one "
+        "goes up, the other tends to go down (inverse). **Thicker** = stronger correlation.\n\n"
+        "**What to look for:** Dense blue clusters = the TME co-activates these pathways as a unit. "
+        "Blocking just one may not work — consider combination therapy targeting the whole cluster. "
+        "Isolated large nodes = strong activation but independent of other pathways — monotherapy "
+        "may suffice. Red edges = mutually exclusive strategies that may define patient subgroups."
+    )
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
 tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -1423,14 +1488,28 @@ tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 with tab0:
     st.markdown("### Per-Receptor Ligand Activation Distribution")
     st.markdown(
-        "Each row is a receptor. Overlaid violins show the **per-patient distribution of each ligand's "
-        "log₂FC** vs GTEx normal tissue. Different colors = different ligands. "
-        "**Further right = more upregulated in tumor → stronger activation of that receptor pathway.** "
-        "Near zero = similar to healthy tissue. Left of the dashed line = below normal. "
-        "Where violins overlap, those ligands co-vary across patients. "
-        "Wider = more patients at that level. Hover for ligand identity."
+        f"**n = {len(r_filt)} patients.** Each row is a receptor. "
+        "**Colored curves** = density of per-patient log₂FC for each ligand. "
+        "**Gray bars** = histogram of patient counts across log₂FC bins (all ligands pooled). "
+        "**Further right = more upregulated → stronger pathway activation.** "
+        "Dashed line = normal tissue level."
     )
     st.plotly_chart(create_barplot(r_filt, project_id, gtex_baseline=gtex_baseline, ligand_df=l_filt), use_container_width=True)
+    with st.expander("How to read this chart"):
+        st.markdown(
+            "Each row represents one T cell inhibitory receptor. Within each row:\n\n"
+            "- **Gray histogram bars** show how many patients fall in each log₂FC range, "
+            "pooled across all ligands for that receptor. This gives you the raw frequency.\n"
+            "- **Colored density curves** (one per ligand) show the smooth distribution shape "
+            "for each individual ligand. Where curves overlap, those ligands co-vary.\n"
+            "- **The dashed gray line at 0** marks normal tissue expression. Everything to the "
+            "right is upregulated in tumor.\n\n"
+            "**What to look for:**\n"
+            "- A single dominant curve shifted far right = one ligand drives most of the activation.\n"
+            "- Multiple curves at different positions = different ligands contribute differently.\n"
+            "- Bimodal shapes (two humps) = the cohort splits into 'cold' and 'hot' subgroups.\n"
+            "- Narrow curves near 0 = that ligand isn't upregulated (not a useful therapeutic target)."
+        )
 
 with tab1:
     st.markdown("### Ligand Breakdown by Receptor")
@@ -1445,6 +1524,18 @@ with tab1:
         st.plotly_chart(stacked_chart, use_container_width=True)
     else:
         st.info("No receptor-ligand activation data available.")
+    with st.expander("How to read this chart"):
+        st.markdown(
+            "Each bar cluster is one receptor. The colored segments within each bar represent "
+            "individual ligands, stacked to show total upregulation.\n\n"
+            "- **Bar height** = mean log₂FC of that ligand across all patients vs normal tissue.\n"
+            "- **Stacked total** = combined upregulation across all ligands for that receptor.\n"
+            "- **Hover** shows the exact fold-change, raw TPM, and GTEx normal value.\n\n"
+            "**What to look for:**\n"
+            "- Tallest total bar = the receptor pathway most activated by the TME.\n"
+            "- One dominant color in a bar = a single ligand drives that pathway.\n"
+            "- Even segments = multiple ligands contribute equally (harder to block with one drug)."
+        )
 
 with tab2:
     st.markdown("### TME Suppressive Ligand Landscape")
@@ -1453,15 +1544,47 @@ with tab2:
         "that engage the T cell inhibitory receptors. Higher expression = more suppressive microenvironment."
     )
     st.plotly_chart(create_ligand_barplot(l_filt, gtex_baseline=gtex_baseline), use_container_width=True)
+    with st.expander("How to read this chart"):
+        st.markdown(
+            "Each horizontal bar is one TME ligand, ranked by log₂FC vs normal tissue.\n\n"
+            "- **Bar length** = mean log₂ fold-change across all patients.\n"
+            "- **Whiskers** = Q1 to Q3 (interquartile range), showing patient-level variability.\n"
+            "- **Hover** shows the fold-change, raw tumor TPM, and GTEx normal TPM.\n\n"
+            "**What to look for:**\n"
+            "- Long bars = ligands the TME strongly upregulates (high-value therapeutic targets).\n"
+            "- Wide whiskers = high variability (not all patients upregulate it — biomarker needed).\n"
+            "- Short bars near 0 = similar to normal tissue (not actively suppressive here)."
+        )
 
     # Heatmap
     tme_df = compute_tme_suppression(r_filt, l_filt, gtex_baseline=gtex_baseline)
     if not tme_df.empty:
         hm = create_tme_heatmap(tme_df)
-        if hm: st.plotly_chart(hm, use_container_width=True)
+        if hm:
+            st.plotly_chart(hm, use_container_width=True)
+            with st.expander("How to read the heatmap"):
+                st.markdown(
+                    "Rows = receptors (T cell). Columns = ligands (TME). Color intensity = "
+                    "combined suppressive score (receptor log₂FC + ligand log₂FC).\n\n"
+                    "- **Dark red cells** = both the receptor and its ligand are strongly upregulated. "
+                    "This is the most actively suppressive pair.\n"
+                    "- **Light/white cells** = weak upregulation on one or both sides.\n"
+                    "- **Missing cells** = that receptor-ligand pair is not mapped."
+                )
 
 with tab3:
     st.plotly_chart(create_corrmatrix(l_filt), use_container_width=True)
+    with st.expander("How to read this chart"):
+        st.markdown(
+            "This is a Spearman correlation matrix of **ligand activation scores** "
+            "(not receptor expression). Each cell shows ρ between two receptors' ligand "
+            "activation scores across patients.\n\n"
+            "- **Dark blue** = strong positive correlation (co-activation).\n"
+            "- **Dark red** = strong negative correlation (inverse activation).\n"
+            "- **White/near-zero** = no relationship.\n\n"
+            "This is the same data underlying the network edges, but shown for all pairs "
+            "including those below the |ρ| threshold."
+        )
 
 with tab4:
     if len(edge_df) > 0:
@@ -1473,6 +1596,16 @@ with tab4:
                       "Receptor B","B's Ligands","B Mean Lig. Score",
                       "Weight (ρ)","Co-activation ρ","p-value"]
         st.dataframe(d.sort_values("Weight (ρ)", ascending=False), use_container_width=True, height=500)
+        with st.expander("How to read this table"):
+            st.markdown(
+                "Each row is one edge from the network graph.\n\n"
+                "- **Weight (|ρ|)** = absolute Spearman correlation between the two receptors' "
+                "ligand activation scores. Higher = stronger co-activation.\n"
+                "- **Co-activation ρ** = signed value. Positive = both go up together. "
+                "Negative = inverse relationship.\n"
+                "- **p-value** = statistical significance. All shown edges passed the threshold.\n"
+                "- **Ligands columns** show which TME molecules contribute to each receptor's score."
+            )
     else:
         st.info("No edges at current thresholds.")
 
@@ -1487,13 +1620,21 @@ with tab5:
         with col_b:
             if "stage" in demo_df.columns:
                 sc = demo_df["stage"].value_counts().reset_index(); sc.columns=["Stage","Count"]
-                # Sort by stage order
                 stage_order = ["Stage 0/IS","Stage I","Stage II","Stage III","Stage IV","Not Reported"]
                 sc["_sort"] = sc["Stage"].apply(lambda x: stage_order.index(x) if x in stage_order else 99)
                 sc = sc.sort_values("_sort").drop(columns="_sort")
                 st.plotly_chart(px.bar(sc,x="Stage",y="Count",title=f"Samples by Stage — {project_id}",
                     template="plotly", color="Stage").update_layout(height=400,showlegend=False),
                     use_container_width=True)
+        with st.expander("How to read these charts"):
+            st.markdown(
+                "Simple counts of how many patient samples are in each category.\n\n"
+                "- **Race chart** shows the demographic breakdown. TCGA skews heavily White/American — "
+                "small groups (n < 20) should be interpreted with caution.\n"
+                "- **Stage chart** shows the AJCC pathologic stage distribution. Use the stage filter "
+                "at the top to focus on specific stages and see how the suppression network changes "
+                "with disease progression."
+            )
     else:
         st.info("No demographics.")
 
@@ -1512,6 +1653,19 @@ with tab6:
             tme_df2[display_cols].sort_values("Suppressive Score", ascending=False),
             use_container_width=True, height=500,
         )
+        with st.expander("How to read this table"):
+            st.markdown(
+                "Each row is one receptor–ligand pair.\n\n"
+                "- **Receptor log₂FC** = how much the receptor mRNA is upregulated in tumor T cells "
+                "vs normal tissue.\n"
+                "- **Ligand log₂FC** = how much the TME ligand is upregulated.\n"
+                "- **Suppressive Score** = receptor + ligand log₂FC combined. Higher = both sides "
+                "of the interaction are elevated.\n"
+                "- **R-L Correlation (ρ)** = do patients with high receptor also have high ligand? "
+                "Positive ρ suggests the receptor is being upregulated *in response to* the ligand.\n"
+                "- **TME (general)** rows are suppressive molecules (IDO1, B7-H3, B7-H4) without "
+                "known specific receptors."
+            )
     else:
         st.info("No receptor-ligand pairs computed.")
 
@@ -1531,22 +1685,24 @@ if not demo_df.empty and "race_label" in demo_df.columns:
         le = ligand_df.loc[ligand_df.index.intersection(rc2), gcols]
         if len(le) < 5:
             continue
-        # For each receptor, sum its ligands' log₂FC
+        # For each receptor, sum ligands in linear space then one log₂FC
         for rg, rinfo in ACTIVE_RECEPTORS.items():
             lig_genes = [lg for lg, linfo in LIGANDS.items()
                          if rg in linfo.get("receptors", []) and lg in le.columns]
             if not lig_genes:
                 continue
-            total_fc = 0
-            for lg in lig_genes:
-                linear = np.power(2, le[lg]) - 1
-                bl = gtex_baseline[lg] if (gtex_baseline is not None and not gtex_baseline.empty and lg in gtex_baseline.index) else max(linear.median(), 0.1)
-                bl = max(bl, 0.1)
-                total_fc += max(0, np.log2((linear.mean() + 0.1) / bl))
+            tumor_sum = sum(
+                (np.power(2, le[lg]) - 1).mean() for lg in lig_genes
+            )
+            normal_sum = sum(
+                max(gtex_baseline[lg] if (gtex_baseline is not None and not gtex_baseline.empty and lg in gtex_baseline.index) else 0.1, 0.1)
+                for lg in lig_genes
+            )
+            fc = max(0, np.log2((tumor_sum + 0.1) / normal_sum))
             pm_rows.append({
                 "Population": f"{rl} (n={len(le)})",
                 "Receptor": rinfo["label"],
-                "log₂(Tumor / Normal)": total_fc,
+                "log₂(Tumor / Normal)": fc,
             })
     if pm_rows:
         pm_df = pd.DataFrame(pm_rows)

@@ -116,8 +116,28 @@ st.markdown(
 st.markdown(
     "⚠ **Hematologic cancers** (TCGA-LAML, TCGA-DLBC) lack a traditional solid tumor microenvironment. "
     "The receptor-ligand co-activation framework was designed for solid tumors where TME cells "
-    "express suppressive ligands. Results for blood cancers should be interpreted as reflecting "
-    "the bone marrow/lymphoid microenvironment rather than a classic solid TME."
+    "express suppressive ligands to shut down infiltrating T cells. In blood cancers, the malignant "
+    "cells themselves ARE immune cells — they constitutively express HLA-E, HVEM, CD48, B7-1/B7-2, "
+    "PD-L1, and other molecules at high levels because that's normal immune cell biology, not active "
+    "suppression."
+)
+st.markdown(
+    "**No good GTEx baseline exists for these cancers.** GTEx does not include lymph node tissue. "
+    "The closest options are all problematic:"
+)
+st.markdown(
+    "- **Spleen** — mostly red pulp (blood filtration), not germinal centers where B cells live. "
+    "Massively underestimates normal B cell gene expression.\n"
+    "- **EBV-transformed lymphocytes** — B cell lines in culture, no stromal component. "
+    "Structural genes (collagen, cadherins) show as massively upregulated because the baseline has zero stroma.\n"
+    "- **Whole Blood** — contains myeloid precursors but not in the tissue context of bone marrow. "
+    "Used for LAML as the least-bad option."
+)
+st.markdown(
+    "Results for LAML and DLBC should be interpreted as **relative expression patterns within the "
+    "cohort** rather than true upregulation above normal tissue. The co-activation network (which "
+    "uses rank-based Spearman correlation) is still informative for identifying which pathways "
+    "co-vary across patients, even if the absolute log₂FC values are inflated."
 )
 
 st.markdown("### Why Transcript Levels Are a Reasonable Approximation")
@@ -208,9 +228,9 @@ st.markdown(
     "expressing 10 TPM of a normally-silent gene shows as log₂(10/0.1) ≈ 6.6."
 )
 st.markdown(
-    "**If GTEx is unavailable** (no internet on first load), the tool falls back to "
-    "the within-cohort median as baseline. This is less ideal — it only shows which "
-    "patients are above or below the tumor cohort midpoint."
+    "**GTEx baseline is required.** The tool will not run without GTEx data — there is no "
+    "fallback to cohort median. This ensures all log₂FC values are measured against healthy "
+    "tissue, not relative to the tumor cohort."
 )
 
 st.markdown("### Ligand Activation Score & Co-activation Network")
@@ -259,24 +279,39 @@ st.markdown(
 
 st.markdown("### Ligand Activation Distribution (Ridgeline Chart)")
 st.markdown(
-    "The Receptor Expression tab shows a **ridgeline density plot** (horizontal violin) "
-    "for each receptor. The x-axis is the per-patient **log₂ fold-change of total "
-    "ligand activation** compared to GTEx normal tissue. For each patient, we sum all "
-    "ligands for a receptor in linear TPM, then compute log₂(patient_sum / normal_sum). "
-    "This shows the full distribution across the cohort — not just a mean and error bar."
+    "The **Pathway Activation** tab shows a ridgeline density plot for each receptor. "
+    "Each row contains per-ligand KDE density curves (colored) overlaid on a gray "
+    "histogram of per-patient total activation. The x-axis is log₂ fold-change vs "
+    "GTEx normal tissue."
+)
+st.markdown(
+    "**Gray histogram bars** show the per-patient combined ligand activation — one value "
+    "per patient computed as log₂((L1 + L2 + ...) / (L1_normal + L2_normal + ...)). "
+    "Hover shows the exact patient count per bin."
+)
+st.markdown(
+    "**Colored density curves** show each ligand's individual distribution. Where multiple "
+    "curves overlap, those ligands co-vary across patients. Where one curve is shifted far "
+    "right while another sits near zero, the pathway is driven by a single dominant ligand."
 )
 st.markdown(
     "**Why density instead of a bar chart?** A bar chart with error bars assumes the "
     "distribution is roughly symmetric around the mean. In reality, ligand activation "
-    "is often bimodal: some tumors are \"cold\" (low ligand expression, near normal) "
-    "while others are \"hot\" (high expression, strong suppression). A violin plot "
-    "reveals this structure — a bimodal distribution suggests two biological subtypes "
-    "that would respond differently to checkpoint blockade."
+    "is often bimodal: some tumors are 'cold' (low ligand expression, near normal) "
+    "while others are 'hot' (high expression, strong suppression). The ridgeline "
+    "reveals this structure."
+)
+
+st.markdown("### Ligand Breakdown (Compound Bar Chart)")
+st.markdown(
+    "The **Ligand Breakdown** tab shows a horizontal bar chart with compound y-axis labels "
+    "(Receptor · Ligand). Each bar is one receptor-ligand pair, showing the mean log₂FC "
+    "with Q1–Q3 error bars for patient-level variability."
 )
 st.markdown(
-    "Receptors are sorted top-to-bottom by median log₂FC (most activated at top). "
-    "The dashed gray line at 0 marks the normal tissue level. The white mean line "
-    "inside each violin shows the cohort average."
+    "Bars are grouped by receptor (most activated at top) and sorted by log₂FC within each "
+    "group. This format avoids the thin-bar problem of grouped bar charts where receptors "
+    "with 1 ligand get the same width allocation as receptors with 3."
 )
 
 st.markdown("### Clinical Interpretation")

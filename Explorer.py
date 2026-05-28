@@ -33,7 +33,7 @@ st.set_page_config(page_title="TCGA T Cell Exhaustion Explorer", page_icon="🧬
 
 st.markdown("""
 <style>
-.main .block-container { padding-top: 2rem; max-width: 1200px; }
+.main .block-container { padding-top: 2rem; max-width: 1400px; }
 .gdc-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 20px;
     font-size: 0.75rem; font-weight: 600; }
 .gdc-live { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
@@ -464,25 +464,16 @@ def fetch_gtex_baseline(project_id):
 
 def compute_tissue_baseline(ligand_df, gtex_baseline=None):
     """
-    Get per-ligand tissue baseline in linear TPM.
-
-    If GTEx baseline is available (from DB), use it — this is the median
-    expression in healthy normal tissue (e.g., GTEx Lung for TCGA-LUAD).
-
-    If not available, fall back to cohort median (less ideal but functional).
-
-    Returns a Series: gene → baseline linear TPM.
+    Get per-ligand tissue baseline in linear TPM from GTEx.
+    Requires GTEx baseline — no fallback to cohort median.
     """
     baselines = {}
     for lg in ligand_df.columns:
         if lg in LIGANDS:
             if gtex_baseline is not None and not gtex_baseline.empty and lg in gtex_baseline.index:
-                # GTEx provides median TPM directly (already linear)
                 baselines[lg] = max(0, gtex_baseline[lg])
             else:
-                # Fallback: cohort median
-                linear = np.power(2, ligand_df[lg]) - 1
-                baselines[lg] = linear.median()
+                baselines[lg] = 0.1  # floor for genes missing from GTEx
     return pd.Series(baselines)
 
 def compute_ligand_activation_scores(ligand_df, active_receptors=None):
@@ -882,7 +873,7 @@ def create_network(G, pos, title="", activation_scores=None, gtex_baseline=None,
     fig.update_layout(title=dict(text=title,x=0.5),
         xaxis=dict(showgrid=False,zeroline=False,showticklabels=False),
         yaxis=dict(showgrid=False,zeroline=False,showticklabels=False,scaleanchor="x",scaleratio=1),
-        hovermode="closest",height=800,margin=dict(l=60,r=60,t=60,b=60),template="plotly",dragmode="pan")
+        hovermode="closest",height=800,margin=dict(l=60,r=60,t=60,b=60),template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)",dragmode="pan")
     return fig
 
 def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
@@ -1050,7 +1041,7 @@ def create_barplot(df, project_id, gtex_baseline=None, ligand_df=None):
         title=f"Ligand Activation Ridgeline — {TCGA_PROJECTS[project_id]}",
         height=max(600, n_receptors * 70),
         margin=dict(l=120, r=20, t=50, b=50),
-        template="plotly",
+        template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)",
         legend_title="TME Ligand",
         showlegend=True,
         barmode="overlay",
@@ -1068,7 +1059,7 @@ def create_corrmatrix(ligand_df):
         hovertemplate="<b>%{x} × %{y}</b><br>Ligand-activation ρ=%{z:.3f}<extra></extra>",colorbar=dict(title="ρ")))
     fig.update_layout(title="Ligand-Activation Correlation Matrix (TME suppressive pressure)",
         xaxis=dict(tickangle=45,tickfont=dict(size=9)),yaxis=dict(autorange="reversed",tickfont=dict(size=9)),
-        height=700,margin=dict(l=140,r=20,t=50,b=140),template="plotly")
+        height=700,margin=dict(l=140,r=20,t=50,b=140),template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -1086,7 +1077,7 @@ def create_tme_heatmap(tme_df):
     fig.update_layout(title="TME Suppressive Score (log₂FC Receptor + Ligand)",
         xaxis=dict(tickangle=45, tickfont=dict(size=10), title="Ligand (TME)"),
         yaxis=dict(tickfont=dict(size=10), title="Receptor (T cell)", autorange="reversed"),
-        height=600, margin=dict(l=140, r=20, t=50, b=120), template="plotly")
+        height=600, margin=dict(l=140, r=20, t=50, b=120), template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)")
     return fig
 
 
@@ -1140,7 +1131,7 @@ def create_ligand_barplot(ligand_df, gtex_baseline=None):
     fig.update_layout(
         title="TME Ligand Upregulation vs Normal Tissue",
         xaxis_title="log₂(Tumor / Normal)",
-        height=600, margin=dict(l=180, r=20, t=50, b=40), template="plotly",
+        height=600, margin=dict(l=180, r=20, t=50, b=40), template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)",
     )
     return fig
 
@@ -1151,7 +1142,7 @@ def create_receptor_activation_chart(ligand_df, project_id, gtex_baseline=None, 
     Only includes receptors in active_receptors.
     """
     baseline = compute_tissue_baseline(ligand_df, gtex_baseline=gtex_baseline)
-    baseline_source = "GTEx normal tissue" if (gtex_baseline is not None and not gtex_baseline.empty) else "cohort median"
+    baseline_source = "GTEx normal tissue"
     receptors_to_use = active_receptors if active_receptors is not None else RECEPTORS
 
     rows = []
@@ -1194,35 +1185,92 @@ def create_receptor_activation_chart(ligand_df, project_id, gtex_baseline=None, 
 
     df = pd.DataFrame(rows)
 
-    # Sort receptors by total log₂FC
-    receptor_totals = df.groupby("Receptor")["Mean log₂FC"].sum().sort_values(ascending=False)
-    receptor_order = receptor_totals.index.tolist()
+    # Sort receptors by correct combined log₂FC: log₂(sum_tumor / sum_normal)
+    # This matches the node sizing formula in the network graph
+    receptor_combined_fc = {}
+    for receptor_gene, rinfo in receptors_to_use.items():
+        lig_genes_for_sort = [lg for lg, linfo in LIGANDS.items()
+                              if receptor_gene in linfo.get("receptors", []) and lg in ligand_df.columns]
+        if lig_genes_for_sort:
+            tumor_sum = sum((np.power(2, ligand_df[lg]) - 1).mean() for lg in lig_genes_for_sort)
+            normal_sum = sum(max(baseline.get(lg, 0), 0.1) for lg in lig_genes_for_sort)
+            receptor_combined_fc[rinfo["label"]] = max(0, np.log2((tumor_sum + 0.1) / normal_sum))
+
+    receptor_order = sorted(receptor_combined_fc.keys(),
+                            key=lambda r: receptor_combined_fc.get(r, 0), reverse=True)
     df["_sort"] = df["Receptor"].map({r: i for i, r in enumerate(receptor_order)})
     df = df.sort_values("_sort")
 
-    # ── Chart 1: Stacked bar (log₂FC) ────────────────────────────
-    stacked_fig = px.bar(
-        df, x="Receptor", y="Mean log₂FC", color="Ligand",
-        barmode="stack",
-        hover_data={
-            "Ligand": True,
-            "Mean log₂FC": ":.2f",
-            "Fold Change": ":.1f",
-            "Mean TPM": ":.1f",
-            "Normal TPM": ":.1f",
-            "_sort": False,
-        },
-        title=f"Ligand Upregulation vs {baseline_source} — {TCGA_PROJECTS[project_id]}",
-        template="plotly",
-        category_orders={"Receptor": receptor_order},
-    )
+    # ── Chart 1: Horizontal bars with compound "Receptor · Ligand" labels ──
+    all_ligand_names = df["Ligand"].unique().tolist()
+    bar_colors = px.colors.qualitative.Plotly + px.colors.qualitative.D3
+    lig_color_map = {lig: bar_colors[i % len(bar_colors)] for i, lig in enumerate(all_ligand_names)}
+
+    y_labels = []
+    x_vals = []
+    colors = []
+    customdata = []
+    iqr_lo = []
+    iqr_hi = []
+
+    for receptor_name in receptor_order:
+        rsub = df[df["Receptor"] == receptor_name].sort_values("Mean log₂FC", ascending=False)
+        for _, row in rsub.iterrows():
+            y_labels.append(f"{receptor_name}  ·  {row['Ligand']}")
+            x_vals.append(row["Mean log₂FC"])
+            colors.append(lig_color_map.get(row["Ligand"], "#888"))
+            customdata.append([row["Fold Change"], row["Mean TPM"], row["Normal TPM"],
+                               row["Q1"], row["Median log₂FC"], row["Q3"]])
+            iqr_lo.append(row.get("IQR_lower", 0))
+            iqr_hi.append(row.get("IQR_upper", 0))
+
+    stacked_fig = go.Figure()
+    stacked_fig.add_trace(go.Bar(
+        y=y_labels,
+        x=x_vals,
+        orientation="h",
+        marker=dict(color=colors),
+        error_x=dict(
+            type="data", symmetric=False,
+            array=iqr_hi, arrayminus=iqr_lo,
+            thickness=1.5, width=3,
+        ),
+        customdata=customdata,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "log₂FC: %{x:.2f} (= %{customdata[0]:.1f}× normal)<br>"
+            "Q1: %{customdata[3]:.2f} | Median: %{customdata[4]:.2f} | Q3: %{customdata[5]:.2f}<br>"
+            "Tumor: %{customdata[1]:.1f} TPM | Normal: %{customdata[2]:.1f} TPM"
+            "<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+
+    # Legend entries for ligand colors
+    legend_added = set()
+    for lig_name in all_ligand_names:
+        if lig_name not in legend_added:
+            stacked_fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(size=10, color=lig_color_map[lig_name]),
+                name=lig_name, showlegend=True,
+            ))
+            legend_added.add(lig_name)
+
     stacked_fig.update_layout(
-        xaxis_title="T Cell Receptor",
-        yaxis_title="log₂(Tumor / Normal)",
-        xaxis_tickangle=35,
-        height=450,
-        margin=dict(l=60, r=20, t=60, b=100),
+        title=f"Ligand Upregulation vs {baseline_source} — {TCGA_PROJECTS[project_id]}",
+        xaxis_title="log₂(Tumor / Normal)",
+        yaxis=dict(
+            categoryorder="array",
+            categoryarray=list(reversed(y_labels)),
+            tickfont=dict(size=9),
+        ),
+        height=max(500, len(y_labels) * 24),
+        margin=dict(l=200, r=20, t=60, b=50),
         legend_title="TME Ligand",
+        template="plotly",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
 
     # ── Chart 2: Grouped bar with IQR (log₂FC variability) ───────
@@ -1270,7 +1318,7 @@ def create_receptor_activation_chart(ligand_df, project_id, gtex_baseline=None, 
         height=500,
         margin=dict(l=60, r=20, t=60, b=100),
         legend_title="TME Ligand",
-        template="plotly",
+        template="plotly",plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)",
     )
 
     return stacked_fig, detail_fig
@@ -1375,6 +1423,14 @@ except Exception as e:
 # Fetch GTEx baseline (cached after first call, independent of TCGA data source)
 with st.spinner("Fetching GTEx normal tissue baselines (first time only)..."):
     gtex_baseline, gtex_tissue = fetch_gtex_baseline(project_id)
+
+if gtex_baseline.empty:
+    st.error(
+        f"**GTEx baseline unavailable for {project_id}.**\n\n"
+        f"This tool requires GTEx normal tissue expression as a baseline for log₂FC calculations. "
+        f"Check your internet connection and try again. If the GTEx API is down, try later."
+    )
+    st.stop()
 
 # ── Hematologic / poor-baseline warnings ─────────────────────────────────────
 HEMATOLOGIC_PROJECTS = {"TCGA-LAML", "TCGA-DLBC"}
@@ -1526,8 +1582,8 @@ with st.expander("How to read this graph"):
     )
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────
-tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Pathway Activation", "🎯 Ligand Breakdown", "🔴 TME Ligand Activity",
+tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Pathway Activation", "🎯 Ligand Breakdown",
     "🔥 Correlation Matrix", "📋 Edge Table", "👥 Demographics", "🧪 Receptor–Ligand Pairs"
 ])
 
@@ -1559,7 +1615,7 @@ with tab0:
 
 with tab1:
     st.markdown("### Ligand Breakdown by Receptor")
-    baseline_desc = "**GTEx healthy tissue**" if (not gtex_baseline.empty) else "**cohort median**"
+    baseline_desc = "**GTEx healthy tissue**"
     st.markdown(
         f"Stacked chart shows **log₂ fold-change** of each ligand over "
         f"{baseline_desc} baseline. A value of 1 = 2× normal, 3 = 8× normal. "
@@ -1584,41 +1640,6 @@ with tab1:
         )
 
 with tab2:
-    st.markdown("### TME Suppressive Ligand Landscape")
-    st.markdown(
-        "These are the ligands and enzymes expressed **by tumor/stromal/myeloid cells** in the TME "
-        "that engage the T cell inhibitory receptors. Higher expression = more suppressive microenvironment."
-    )
-    st.plotly_chart(create_ligand_barplot(l_filt, gtex_baseline=gtex_baseline), use_container_width=True)
-    with st.expander("How to read this chart"):
-        st.markdown(
-            "Each horizontal bar is one TME ligand, ranked by log₂FC vs normal tissue.\n\n"
-            "- **Bar length** = mean log₂ fold-change across all patients.\n"
-            "- **Whiskers** = Q1 to Q3 (interquartile range), showing patient-level variability.\n"
-            "- **Hover** shows the fold-change, raw tumor TPM, and GTEx normal TPM.\n\n"
-            "**What to look for:**\n"
-            "- Long bars = ligands the TME strongly upregulates (high-value therapeutic targets).\n"
-            "- Wide whiskers = high variability (not all patients upregulate it — biomarker needed).\n"
-            "- Short bars near 0 = similar to normal tissue (not actively suppressive here)."
-        )
-
-    # Heatmap
-    tme_df = compute_tme_suppression(r_filt, l_filt, gtex_baseline=gtex_baseline)
-    if not tme_df.empty:
-        hm = create_tme_heatmap(tme_df)
-        if hm:
-            st.plotly_chart(hm, use_container_width=True)
-            with st.expander("How to read the heatmap"):
-                st.markdown(
-                    "Rows = receptors (T cell). Columns = ligands (TME). Color intensity = "
-                    "combined suppressive score (receptor log₂FC + ligand log₂FC).\n\n"
-                    "- **Dark red cells** = both the receptor and its ligand are strongly upregulated. "
-                    "This is the most actively suppressive pair.\n"
-                    "- **Light/white cells** = weak upregulation on one or both sides.\n"
-                    "- **Missing cells** = that receptor-ligand pair is not mapped."
-                )
-
-with tab3:
     st.plotly_chart(create_corrmatrix(l_filt), use_container_width=True)
     with st.expander("How to read this chart"):
         st.markdown(
@@ -1636,7 +1657,7 @@ with tab3:
             "a Spearman ρ of ~0.40 reaches p < 0.05 — still below our default |ρ| ≥ 0.60 threshold."
         )
 
-with tab4:
+with tab3:
     if len(edge_df) > 0:
         d = edge_df.copy()
         d["Receptor A"] = d["source"].map(lambda g: RECEPTORS[g]["label"])
@@ -1659,14 +1680,14 @@ with tab4:
     else:
         st.info("No edges at current thresholds.")
 
-with tab5:
+with tab4:
     if not demo_df.empty:
         col_a, col_b = st.columns(2)
         with col_a:
             if "race_label" in demo_df.columns:
                 rc = demo_df["race_label"].value_counts().reset_index(); rc.columns=["Race","Count"]
                 st.plotly_chart(px.bar(rc,x="Race",y="Count",title=f"Samples by Race — {project_id}",
-                    template="plotly").update_layout(height=400,xaxis_tickangle=30), use_container_width=True)
+                    template="plotly").update_layout(height=400,xaxis_tickangle=30,plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)"), use_container_width=True)
         with col_b:
             if "stage" in demo_df.columns:
                 sc = demo_df["stage"].value_counts().reset_index(); sc.columns=["Stage","Count"]
@@ -1674,7 +1695,7 @@ with tab5:
                 sc["_sort"] = sc["Stage"].apply(lambda x: stage_order.index(x) if x in stage_order else 99)
                 sc = sc.sort_values("_sort").drop(columns="_sort")
                 st.plotly_chart(px.bar(sc,x="Stage",y="Count",title=f"Samples by Stage — {project_id}",
-                    template="plotly", color="Stage").update_layout(height=400,showlegend=False),
+                    template="plotly", color="Stage").update_layout(height=400,showlegend=False,plot_bgcolor="rgba(0,0,0,0)",paper_bgcolor="rgba(0,0,0,0)"),
                     use_container_width=True)
         with st.expander("How to read these charts"):
             st.markdown(
@@ -1688,7 +1709,7 @@ with tab5:
     else:
         st.info("No demographics.")
 
-with tab6:
+with tab5:
     st.markdown("### Receptor–Ligand Pair Analysis")
     st.markdown(
         "For each inhibitory receptor on T cells, we identify its known TME ligand(s) and "
@@ -1760,7 +1781,7 @@ if not demo_df.empty and "race_label" in demo_df.columns:
                     barmode="group",
                     title=f"Ligand Activation per Receptor by Race — {project_id}",
                     template="plotly")
-        pf.update_layout(height=550, xaxis_tickangle=45)
+        pf.update_layout(height=550, xaxis_tickangle=45, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(pf, use_container_width=True)
 
 st.markdown("---")

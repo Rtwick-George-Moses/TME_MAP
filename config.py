@@ -290,7 +290,7 @@ RECEPTORS = {
     # ── Adenosine pathway receptor on T cells ──────────────────────────────
     "ADORA2A": {
         "label": "A2A Receptor",
-        "family": "Metabolic Exhaustion Markers",
+        "family": "Purinergic Receptors",
         "ensembl": "ENSG00000128271",
         "chromosome": "22q11.23",
         "desc": "Adenosine receptor; GPCR; suppresses T cell function via cAMP",

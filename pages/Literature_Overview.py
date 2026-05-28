@@ -177,16 +177,21 @@ st.markdown(
 
 st.markdown("### Normalization Pipeline")
 st.markdown(
-    "**Within-sample (TPM):** Corrects for gene length and sequencing depth within "
-    "each sample. Makes genes comparable within a single patient."
+    "**Within-sample (TPM):** TCGA provides Transcripts Per Million (TPM) from the "
+    "STAR-Counts pipeline. TPM corrects for gene length and sequencing depth within "
+    "each sample, making genes comparable within a single patient. Because TPM sums to "
+    "~1 million per sample by definition, it is already inherently normalized across samples."
 )
 st.markdown(
-    "**Between-sample (Upper Quartile):** Corrects for technical variation between "
-    "samples. Each sample is scaled so its 75th percentile expression equals the "
-    "median 75th percentile across all samples. Same approach as GDC's FPKM-UQ."
+    "**Log₂(TPM + 1) transform:** Compresses dynamic range for correlation analysis "
+    "and fold-change computation. The +1 pseudocount prevents log(0)."
 )
 st.markdown(
-    "**Log₂(x + 1) transform:** Compresses dynamic range for correlation analysis."
+    "**No additional between-sample normalization.** We do not apply Upper Quartile (UQ) "
+    "or other between-sample normalization. TPM is already library-size normalized, so UQ "
+    "would be double-normalizing. Furthermore, our gene panel contains only 45 immune "
+    "checkpoint genes out of ~60,000 in the transcriptome — computing a UQ correction "
+    "factor from this biased subset could distort rather than correct the data."
 )
 
 st.markdown("### log₂ Fold-Change — The Core Metric")

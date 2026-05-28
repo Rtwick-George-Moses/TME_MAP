@@ -115,39 +115,6 @@ def load_from_db(project_id):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NORMALIZATION
-# ══════════════════════════════════════════════════════════════════════════════
-
-def upper_quartile_normalize(df):
-    """
-    Upper-quartile (UQ) between-sample normalization.
-    TPM is already within-sample normalized (gene length + library size).
-    UQ normalization corrects for remaining cross-sample technical variation
-    by dividing each sample's values by its 75th percentile, then scaling
-    to a common reference (median of all 75th percentiles).
-
-    Input: log2(TPM+1) matrix (samples × genes)
-    Output: UQ-normalized log2 matrix
-    """
-    # Back-transform to linear TPM
-    linear = np.power(2, df) - 1
-
-    # Compute 75th percentile per sample (row), ignoring zeros
-    uq_per_sample = linear.apply(
-        lambda row: np.percentile(row[row > 0], 75) if (row > 0).sum() > 0 else 1.0,
-        axis=1,
-    )
-
-    # Scale factor: sample UQ / median UQ
-    median_uq = uq_per_sample.median()
-    scale_factors = median_uq / uq_per_sample.replace(0, median_uq)
-
-    # Apply scaling and re-log
-    normalized = linear.multiply(scale_factors, axis=0)
-    return np.log2(normalized + 1)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # GDC API
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -360,10 +327,7 @@ def get_full_dataset(project_id, max_samples=0, progress_bar=None):
 
             for c in expr.columns:
                 expr[c] = expr[c].fillna(expr[c].median())
-            _update(70, "Applying upper-quartile normalization...")
-
-            expr = upper_quartile_normalize(expr)
-            _update(90, "Splitting receptor and ligand matrices...")
+            _update(80, "Splitting receptor and ligand matrices...")
 
             rcols = [c for c in expr.columns if c in RECEPTORS]
             lcols = [c for c in expr.columns if c in LIGANDS]
@@ -401,10 +365,7 @@ def get_full_dataset(project_id, max_samples=0, progress_bar=None):
 
     for c in expr.columns:
         expr[c] = expr[c].fillna(expr[c].median())
-    _update(88, "Applying upper-quartile normalization...")
-
-    expr = upper_quartile_normalize(expr)
-    _update(95, "Splitting receptor and ligand matrices...")
+    _update(92, "Splitting receptor and ligand matrices...")
 
     rcols = [c for c in expr.columns if c in RECEPTORS]
     lcols = [c for c in expr.columns if c in LIGANDS]
@@ -1336,7 +1297,7 @@ with st.sidebar:
     st.caption(
         f"{db_status}. "
         f"{len(RECEPTORS)} receptors · {len(LIGANDS)} ligands. "
-        "TPM from STAR-Counts, UQ-normalized, log₂(x+1)."
+        "TPM from STAR-Counts, log₂(TPM+1)."
     )
 
 # Hardcoded p-value threshold
@@ -1498,9 +1459,9 @@ with col_thresh:
 bl_status = f"GTEx baseline ({gtex_tissue}) ✓" if not gtex_baseline.empty else "cohort baseline"
 if data_source == "LOCAL DB":
     db_size = os.path.getsize(DB_PATH) / (1024*1024)
-    st.caption(f"● OFFLINE — DB ({db_size:.0f} MB) · {bl_status} · UQ-norm")
+    st.caption(f"● OFFLINE — DB ({db_size:.0f} MB) · {bl_status}")
 else:
-    st.caption(f"● LIVE — GDC API · {bl_status} · UQ-norm")
+    st.caption(f"● LIVE — GDC API · {bl_status}")
 
 # ── Apply filters: population + stage ────────────────────────────────────────
 filter_idx = demo_df.index  # start with all
@@ -1785,4 +1746,4 @@ if not demo_df.empty and "race_label" in demo_df.columns:
         st.plotly_chart(pf, use_container_width=True)
 
 st.markdown("---")
-st.caption(f"TCGA Explorer · {len(RECEPTORS)} receptors + {len(LIGANDS)} ligands · UQ-normalized · GDC API")
+st.caption(f"TCGA Explorer · {len(RECEPTORS)} receptors + {len(LIGANDS)} ligandsalized · GDC API")

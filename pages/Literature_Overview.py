@@ -46,6 +46,9 @@ st.markdown(
     f"**{len(LIGANDS)} TME ligands** tracked across **{len(TCGA_PROJECTS)} TCGA cancer types**."
 )
 
+# Version selector
+version = st.segmented_control("Documentation Version", ["Explorer 1.0", "Explorer 2.0"], default="Explorer 2.0")
+
 st.markdown("---")
 
 
@@ -54,6 +57,13 @@ st.markdown("---")
 # ═══════════════════════════════════════════════════════════════════════════
 
 st.markdown("## Methodology")
+
+if version == "Explorer 1.0":
+    st.error(
+        "⚠ **Explorer 1.0 was deprecated on May 28, 2026.** "
+        "Raw log₂FC values are inflated by pipeline batch effects between TCGA (STAR) and GTEx (RSEM). "
+        "Use Explorer 2.0 documentation instead."
+    )
 
 st.markdown("### What This Tool Measures")
 st.markdown(
@@ -64,10 +74,22 @@ st.markdown(
 st.markdown(
     "It does this by measuring the expression of TME ligands (the molecules "
     "tumor/stromal/myeloid cells produce to shut down T cells) and comparing "
-    "them to healthy tissue. Everything is expressed as **% above normal** — "
-    "how much more of each suppressive ligand the tumor produces compared to "
-    "the same organ in a healthy person."
+    "them to healthy tissue."
 )
+
+if version == "Explorer 2.0":
+    st.markdown(
+        "In Explorer 2.0, all values are expressed as **LRAR (Ligand-to-Receptor "
+        "Activation Ratio)** — the ligand's upregulation minus the receptor's own "
+        "upregulation. This normalizes out systematic pipeline differences between "
+        "TCGA and GTEx."
+    )
+else:
+    st.markdown(
+        "Everything is expressed as **log₂ fold-change above normal** — "
+        "how much more of each suppressive ligand the tumor produces compared to "
+        "the same organ in a healthy person."
+    )
 
 st.markdown("### Data Sources")
 st.markdown(
@@ -237,6 +259,76 @@ st.markdown(
     "fallback to cohort median. This ensures all log₂FC values are measured against healthy "
     "tissue, not relative to the tumor cohort."
 )
+
+if version == "Explorer 2.0":
+    st.markdown("### TCGA vs GTEx Pipeline Batch Effect")
+    st.markdown(
+        "TCGA uses the STAR aligner with GENCODE v36 for TPM quantification. GTEx v8 uses "
+        "RSEM with GENCODE v26. These produce systematically different TPM values — research "
+        "shows that samples cluster by study (TCGA vs GTEx), not by tissue, indicating that "
+        "direct TPM comparison inflates fold-change values to biologically implausible levels "
+        "(log₂FC of 10–15 for many genes, implying 1000–32000× upregulation)."
+    )
+    st.markdown(
+        "Uniform reprocessing (UCSC Xena Toil, recount3) exists but requires large downloads. "
+        "We instead apply LRAR normalization, which cancels the batch effect algebraically."
+    )
+
+    st.markdown("### LRAR — Ligand-to-Receptor Activation Ratio")
+    st.markdown(
+        "The core metric in Explorer 2.0. For each receptor–ligand pair:"
+    )
+    st.markdown(
+        "    **LRAR = Ligand_log₂FC − Receptor_log₂FC**"
+    )
+    st.markdown(
+        "If both TCGA and GTEx TPM are systematically scaled by a batch factor *k*, then:"
+    )
+    st.markdown(
+        "    log₂(k × TPM / GTEx) = log₂(TPM / GTEx) + log₂(k)\n\n"
+        "The batch term log₂(k) appears in **both** the ligand and receptor log₂FC. "
+        "Subtracting cancels it:\n\n"
+        "    (L_FC + log₂k) − (R_FC + log₂k) = L_FC − R_FC\n\n"
+        "What survives is the true biological difference in upregulation between ligand and receptor."
+    )
+    st.markdown(
+        "| LRAR | Meaning |\n"
+        "|------|----------|\n"
+        "| > 0 | TME ligand outpaces receptor → actively suppressing |\n"
+        "| ≈ 0 | Balanced — ligand and receptor equally upregulated |\n"
+        "| < 0 | Receptor outpaces ligand → pathway is ligand-limited |\n"
+        "| +5 | Ligand is 32× more upregulated than receptor |\n"
+        "| −5 | Receptor is 32× more upregulated than ligand |"
+    )
+    st.markdown(
+        "**Why subtraction, not division?** Division (Ligand_FC / Receptor_FC) produces "
+        "extreme outliers when the receptor log₂FC is near zero — a receptor with 0.01 log₂FC "
+        "and a ligand with 10 log₂FC gives a ratio of 1000. Subtraction is symmetric around "
+        "zero, bounded, and robust to near-zero denominators."
+    )
+    st.markdown(
+        "**Clinical validation.** LRAR values match known therapeutic outcomes: PD-1 shows "
+        "balanced LRAR (≈0) in LUAD where anti-PD-1 works; PD-1 shows negative LRAR in AML "
+        "where anti-PD-1 monotherapy has been disappointing; NKG2A shows strongly positive "
+        "LRAR in AML consistent with the HLA-E/NKG2A evasion axis described by Zhao et al. "
+        "(2025, *Signal Transduction and Targeted Therapy*, "
+        "[DOI: 10.1038/s41392-025-02228-5](https://www.nature.com/articles/s41392-025-02228-5))."
+    )
+
+    st.markdown("### Normalized Charts")
+    st.markdown(
+        "All charts in Explorer 2.0 use LRAR instead of raw log₂FC:"
+    )
+    st.markdown(
+        "- **Ridgeline:** x-axis = per-patient LRAR. Reference line at 0 (balanced). "
+        "Curves right of 0 = ligand outpaces receptor.\n"
+        "- **Breakdown bars:** horizontal bars = mean LRAR per receptor·ligand pair. "
+        "Reference line at 0.\n"
+        "- **Network nodes:** size = mean LRAR (larger = more ligand-dominant).\n"
+        "- **Correlation matrix:** Spearman ρ of normalized activation scores "
+        "(sum of per-ligand LRAR per patient per receptor).\n"
+        "- **Population chart:** mean LRAR by race with reference line at 0."
+    )
 
 st.markdown("### Ligand Activation Score & Co-activation Network")
 st.markdown(
@@ -447,6 +539,28 @@ st.markdown(
     "endothelial cells but is also expressed on melanoma and other tumor cells. It binds "
     "LAG-3 and inhibits IFN-γ production from T cells. Its expression is tissue-dependent "
     "and may be very low outside liver-related cancers."
+)
+st.markdown(
+    "**MHC-II (HLA-DRA) → LAG-3:** MHC class II is LAG-3's canonical, primary ligand — "
+    "the interaction that relatlimab was designed to block. LAG-3 binds MHC-II with higher "
+    "affinity than CD4, delivering an inhibitory signal that suppresses T cell activation. "
+    "We use HLA-DRA (the invariant alpha chain of HLA-DR) as a proxy for total MHC-II "
+    "expression. HLA-DRA is expressed on antigen-presenting cells (dendritic cells, "
+    "macrophages, B cells) and on some tumor cells. In immune-infiltrated tumors, high "
+    "HLA-DRA reflects abundant APCs engaging LAG-3 on exhausted T cells. **Caveat for DLBC:** "
+    "B-cell lymphomas constitutively express MHC-II because the tumor cells are B cells — "
+    "high HLA-DRA in DLBC reflects tumor biology, not immune infiltration."
+)
+st.markdown(
+    "**PSGL-1 (SELPLG/CD162) → VISTA:** PSGL-1 was recently identified as a VISTA binding "
+    "partner that inhibits T cell activation specifically under acidic pH conditions found "
+    "in the tumor microenvironment (Johnston et al. 2019, *Nature* 574:565). At physiological "
+    "pH, VISTA can still suppress T cells through other receptors (including VSIG3). PSGL-1 "
+    "is highly expressed on T cells and myeloid cells. The VISTA/PSGL-1 axis is an active "
+    "therapeutic target — peptide inhibitors blocking this interaction have shown anti-tumor "
+    "activity in preclinical models. **Important:** bulk RNA-seq cannot capture the pH-dependent "
+    "nature of this interaction. High PSGL-1 expression indicates the binding partner is "
+    "available, but actual engagement depends on local TME acidity."
 )
 
 rl_rows = []

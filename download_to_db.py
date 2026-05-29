@@ -286,31 +286,91 @@ def main():
 
     conn = init_db(args.db)
 
-    # Check which projects already exist in DB
+    # Check which projects already exist in DB and which genes they have
     existing_projects = set()
+    project_genes = {}  # project_id → set of genes in DB
+    expected_genes = set(ALL_GENE_ENSEMBL.keys())
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT project_id FROM expression")
         existing_projects = {row[0] for row in cursor.fetchall()}
+        # Check gene coverage for existing projects
+        for proj in existing_projects:
+            cursor.execute("SELECT DISTINCT gene FROM expression WHERE project_id = ?", (proj,))
+            project_genes[proj] = {row[0] for row in cursor.fetchall()}
         if existing_projects:
-            print(f"Already in DB: {', '.join(sorted(existing_projects))}\n")
+            print(f"Already in DB: {', '.join(sorted(existing_projects))}")
+            # Check for missing genes
+            for proj in sorted(existing_projects):
+                missing = expected_genes - project_genes.get(proj, set())
+                if missing:
+                    print(f"  {proj}: missing {len(missing)} genes → {', '.join(sorted(missing))}")
+            print()
     except Exception:
         pass
 
     success = 0
     skipped = 0
+    patched = 0
     failed = []
 
     for pi, project_id in enumerate(projects):
         print(f"\n[{pi+1}/{len(projects)}] {project_id} — {TCGA_PROJECTS[project_id]}")
         print(f"{'─' * 50}")
 
-        # Skip if already downloaded (unless --force)
+        # Check if project needs full download, patch, or skip
         if project_id in existing_projects and not args.force:
-            print(f"  ✓ Already in DB. Skipping (use --force to re-download).")
-            skipped += 1
-            success += 1
-            continue
+            missing_genes = expected_genes - project_genes.get(project_id, set())
+            if not missing_genes:
+                print(f"  ✓ Already in DB with all {len(expected_genes)} genes. Skipping.")
+                skipped += 1
+                success += 1
+                continue
+            else:
+                print(f"  ↻ Patching {len(missing_genes)} missing genes: {', '.join(sorted(missing_genes))}")
+                # Need to re-download files but only insert the missing genes
+                try:
+                    files_df = fetch_file_ids(project_id)
+                    if files_df.empty:
+                        print(f"  ⚠ No files found. Skipping patch.")
+                        failed.append((project_id, "No files for patch"))
+                        continue
+
+                    files_df = files_df.drop_duplicates(subset="case_id", keep="first")
+                    file_to_case = dict(zip(files_df["file_id"], files_df["case_id"]))
+                    fids = files_df["file_id"].tolist()
+
+                    expression_records = download_all_expression(fids, args.max_samples)
+                    if not expression_records:
+                        print(f"  ⚠ No expression data. Skipping patch.")
+                        failed.append((project_id, "No expression for patch"))
+                        continue
+
+                    # Only insert rows for missing genes
+                    c = conn.cursor()
+                    patch_rows = []
+                    for file_id, gene_vals in expression_records.items():
+                        case_id = file_to_case.get(file_id)
+                        if not case_id:
+                            continue
+                        for gene, val in gene_vals.items():
+                            if gene in missing_genes:
+                                patch_rows.append((project_id, case_id, gene, val))
+
+                    c.executemany("""
+                        INSERT OR REPLACE INTO expression (project_id, case_id, gene, log2_tpm)
+                        VALUES (?, ?, ?, ?)
+                    """, patch_rows)
+                    conn.commit()
+                    print(f"    → Patched {len(patch_rows)} expression rows for {len(missing_genes)} genes")
+                    patched += 1
+                    success += 1
+                    continue
+
+                except Exception as e:
+                    print(f"  ✗ PATCH FAILED: {e}")
+                    failed.append((project_id, f"Patch failed: {e}"))
+                    continue
 
         try:
             # Demographics
@@ -362,7 +422,7 @@ def main():
     conn.close()
 
     print(f"\n{'═' * 50}")
-    print(f"DONE: {success}/{len(projects)} projects available ({skipped} skipped, {success - skipped} new)")
+    print(f"DONE: {success}/{len(projects)} projects available ({skipped} skipped, {patched} patched, {success - skipped - patched} new)")
     if failed:
         print(f"FAILED ({len(failed)}):")
         for p, reason in failed:

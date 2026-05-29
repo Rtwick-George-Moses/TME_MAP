@@ -476,6 +476,7 @@ LIGANDS = {
     "FGL1":     {"ensembl": "ENSG00000104760", "label": "FGL1",         "receptors": ["LAG3"]},
     "LGALS3":   {"ensembl": "ENSG00000131981", "label": "Galectin-3",   "receptors": ["LAG3"]},
     "CLEC4G":   {"ensembl": "ENSG00000182566", "label": "LSECtin (CLEC4G)", "receptors": ["LAG3"]},
+    "HLA_DRA":  {"ensembl": "ENSG00000204287", "label": "MHC-II (HLA-DRA)", "receptors": ["LAG3"]},
     # TIM-3 ligands
     "LGALS9":   {"ensembl": "ENSG00000168961", "label": "Galectin-9",   "receptors": ["HAVCR2"]},
     "HMGB1":    {"ensembl": "ENSG00000189403", "label": "HMGB1",        "receptors": ["HAVCR2"]},
@@ -489,8 +490,9 @@ LIGANDS = {
     "TNFRSF14": {"ensembl": "ENSG00000157873", "label": "HVEM",         "receptors": ["BTLA", "CD160"]},
     # 2B4 (CD244) ligand
     "CD48":     {"ensembl": "ENSG00000117091", "label": "CD48",         "receptors": ["CD244"]},
-    # VISTA ligand
+    # VISTA ligands
     "VSIG3":    {"ensembl": "ENSG00000155659", "label": "VSIG3 (IGSF11)", "receptors": ["VSIR"]},
+    "SELPLG":   {"ensembl": "ENSG00000110876", "label": "PSGL-1 (CD162)", "receptors": ["VSIR"]},
     # CD200R ligand
     "CD200":    {"ensembl": "ENSG00000091972", "label": "CD200",        "receptors": ["CD200R1"]},
     # KLRG1 ligands (cadherins)
